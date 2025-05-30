@@ -54,6 +54,18 @@ function DataController:ConnectServerEvents()
 		self:OnStatsChanged(stats)
 	end)
 
+	-- Повышение уровня
+	local levelUp = remoteEvents:WaitForChild(Constants.REMOTE_EVENTS.LEVEL_UP)
+	self:ConnectEvent(levelUp.OnClientEvent, function(levelData)
+		self:OnLevelUp(levelData)
+	end)
+
+	-- Изменение опыта
+	local experienceChanged = remoteEvents:WaitForChild(Constants.REMOTE_EVENTS.EXPERIENCE_CHANGED)
+	self:ConnectEvent(experienceChanged.OnClientEvent, function(xpData)
+		self:OnExperienceChanged(xpData)
+	end)
+
 	-- Системные сообщения
 	local systemMessage = remoteEvents:WaitForChild(Constants.REMOTE_EVENTS.SYSTEM_MESSAGE)
 	self:ConnectEvent(systemMessage.OnClientEvent, function(messageData)
@@ -63,22 +75,27 @@ end
 
 -- Обработка загрузки данных игрока
 function DataController:OnPlayerDataLoaded(data)
-	print("[DATA CONTROLLER] Player data loaded!")
+	print("[DATA CONTROLLER] Player data loaded/updated!")
 
 	self.PlayerData = data
 
-	-- Вызываем все отложенные callbacks
-	for _, callback in ipairs(self.DataLoadedCallbacks) do
-		spawn(function()
-			callback(data)
-		end)
+	-- Вызываем все отложенные callbacks только при первой загрузке
+	if #self.DataLoadedCallbacks > 0 then
+		for _, callback in ipairs(self.DataLoadedCallbacks) do
+			spawn(function()
+				callback(data)
+			end)
+		end
+		self.DataLoadedCallbacks = {}
+
+		-- Уведомляем о загрузке данных только при первой загрузке
+		self.DataLoaded:Fire(data)
+
+		self:PrintPlayerInfo()
 	end
-	self.DataLoadedCallbacks = {}
 
-	-- Уведомляем о загрузке данных
-	self.DataLoaded:Fire(data)
-
-	self:PrintPlayerInfo()
+	-- Обновляем UI при каждом обновлении данных
+	self:UpdateUI()
 end
 
 -- Обработка изменения статов
@@ -90,10 +107,16 @@ function DataController:OnStatsChanged(stats)
 		self.PlayerData.Health = stats.Health
 		self.PlayerData.Mana = stats.Mana
 		self.PlayerData.Stamina = stats.Stamina
+		self.PlayerData.MaxHealth = stats.MaxHealth
+		self.PlayerData.MaxMana = stats.MaxMana
+		self.PlayerData.MaxStamina = stats.MaxStamina
 	end
 
 	-- Уведомляем об изменении статов
 	self.StatsChanged:Fire(stats)
+
+	-- Обновляем UI
+	self:UpdateUI()
 end
 
 -- Обработка системных сообщений
@@ -101,6 +124,38 @@ function DataController:OnSystemMessage(messageData)
 	print("[SYSTEM] " .. messageData.Message)
 
 	-- Здесь можно добавить обработку для UI уведомлений
+end
+
+-- Обработка повышения уровня
+function DataController:OnLevelUp(levelData)
+	print("[DATA CONTROLLER] LEVEL UP! New level: " .. levelData.NewLevel)
+
+	if self.PlayerData then
+		self.PlayerData.Level = levelData.NewLevel
+		self.PlayerData.AttributePoints = levelData.AttributePoints
+	end
+
+	-- Уведомляем о повышении уровня
+	self.LevelUp:Fire(levelData)
+
+	-- Обновляем UI
+	self:UpdateUI()
+end
+
+-- Обработка изменения опыта
+function DataController:OnExperienceChanged(xpData)
+	print("[DATA CONTROLLER] Experience changed: " .. xpData.Experience .. "/" .. xpData.RequiredXP)
+
+	if self.PlayerData then
+		self.PlayerData.Experience = xpData.Experience
+		self.PlayerData.Level = xpData.Level
+	end
+
+	-- Уведомляем об изменении опыта
+	self.ExperienceChanged:Fire(xpData)
+
+	-- Обновляем UI
+	self:UpdateUI()
 end
 
 -- Получить данные игрока
@@ -124,32 +179,32 @@ end
 
 -- Получить уровень игрока
 function DataController:GetLevel()
-	return self.PlayerData and self.PlayerData.Level or 1
+	return (self.PlayerData and self.PlayerData.Level) or 1
 end
 
 -- Получить опыт игрока
 function DataController:GetExperience()
-	return self.PlayerData and self.PlayerData.Experience or 0
+	return (self.PlayerData and self.PlayerData.Experience) or 0
 end
 
 -- Получить характеристики игрока
 function DataController:GetAttributes()
-	return self.PlayerData and self.PlayerData.Attributes or Constants.PLAYER.BASE_ATTRIBUTES
+	return (self.PlayerData and self.PlayerData.Attributes) or Constants.PLAYER.BASE_ATTRIBUTES
 end
 
 -- Получить золото игрока
 function DataController:GetGold()
-	return self.PlayerData and self.PlayerData.Currency.Gold or 0
+	return (self.PlayerData and self.PlayerData.Currency.Gold) or 0
 end
 
 -- Получить статистику игрока
 function DataController:GetStatistics()
-	return self.PlayerData and self.PlayerData.Statistics or {}
+	return (self.PlayerData and self.PlayerData.Statistics) or {}
 end
 
 -- Получить мастерство оружия
 function DataController:GetWeaponMastery(weaponType)
-	if not self.PlayerData or not self.PlayerData.WeaponMastery then
+	if self.PlayerData == nil or self.PlayerData.WeaponMastery == nil then
 		return { Level = 1, Experience = 0 }
 	end
 
@@ -192,9 +247,33 @@ function DataController:GetExperienceProgress()
 	return math.min((currentXP / requiredXP) * 100, 100)
 end
 
+-- Обновить UI через UIController
+function DataController:UpdateUI()
+	if self.PlayerData == nil then
+		return
+	end
+
+	local success, ControllerManager = pcall(require, script.Parent.Parent.ControllerManager)
+	if not success then
+		print("[DATA CONTROLLER] Could not access ControllerManager")
+		return
+	end
+
+	local success2, UIController = pcall(function()
+		return ControllerManager:GetController("UIController")
+	end)
+
+	if success2 and UIController ~= nil then
+		UIController:UpdateStats(self.PlayerData)
+		print("[DATA CONTROLLER] UI updated successfully")
+	else
+		print("[DATA CONTROLLER] UIController not available")
+	end
+end
+
 -- Вывести информацию об игроке в консоль
 function DataController:PrintPlayerInfo()
-	if not self.PlayerData then
+	if self.PlayerData == nil then
 		print("[DATA CONTROLLER] No player data available")
 		return
 	end

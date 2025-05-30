@@ -27,8 +27,8 @@ function RemoteService:OnInitialize()
 	remoteFolder.Name = "RemoteEvents"
 	remoteFolder.Parent = ReplicatedStorage
 
-	-- Создаем все RemoteEvent'ы из констант
-	for eventName, _ in pairs(Constants.REMOTE_EVENTS) do
+	-- Создаем все RemoteEvent'ы из констант (используем значения, а не ключи)
+	for eventKey, eventName in pairs(Constants.REMOTE_EVENTS) do
 		self:CreateRemoteEvent(eventName)
 	end
 
@@ -223,7 +223,7 @@ end
 
 -- Валидация игрока
 function RemoteService:ValidatePlayer(player)
-	return player and player.Parent == Players and player.Character
+	return player ~= nil and player.Parent == Players and player.Character ~= nil
 end
 
 -- Очистка старых записей rate limiting

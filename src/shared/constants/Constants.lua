@@ -162,6 +162,8 @@ Constants.REMOTE_EVENTS = {
 	-- Данные игрока
 	PLAYER_DATA_LOADED = "PlayerDataLoaded",
 	PLAYER_STATS_CHANGED = "PlayerStatsChanged",
+	LEVEL_UP = "LevelUp",
+	EXPERIENCE_CHANGED = "ExperienceChanged",
 
 	-- Инвентарь
 	INVENTORY_UPDATED = "InventoryUpdated",

@@ -33,8 +33,13 @@ local function registerServices()
 		ServiceManager:RegisterService(RemoteService)
 	end
 
-	-- Регистрируем PlayerDataService
+	-- Пробуем ProfileService, если не работает - используем SimpleDataService
 	local PlayerDataService = safeRequire(ServerScriptService.Server.services.PlayerDataService, "PlayerDataService")
+	if not PlayerDataService then
+		print("[MAIN] ProfileService failed, using SimpleDataService as fallback")
+		PlayerDataService = safeRequire(ServerScriptService.Server.services.SimpleDataService, "SimpleDataService")
+	end
+
 	if PlayerDataService then
 		ServiceManager:RegisterService(PlayerDataService)
 	end

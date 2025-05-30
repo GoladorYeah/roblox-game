@@ -33,6 +33,12 @@ end
 local function registerControllers()
 	print("[MAIN] Registering controllers...")
 
+	-- Регистрируем UIController первым
+	local UIController = safeRequire(StarterPlayerScripts.Client.controllers.UIController, "UIController")
+	if UIController then
+		ControllerManager:RegisterController(UIController)
+	end
+
 	-- Регистрируем DataController
 	local DataController = safeRequire(StarterPlayerScripts.Client.controllers.DataController, "DataController")
 	if DataController then

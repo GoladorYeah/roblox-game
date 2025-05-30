@@ -173,7 +173,7 @@ function PlayerDataService:LoadPlayerData(player)
 			profile.Data.LastLogin = os.time()
 
 			-- Уведомляем клиент о загрузке данных
-			self:FireClient(player, "PlayerDataLoaded", profile.Data)
+			self:FireClient(player, Constants.REMOTE_EVENTS.PLAYER_DATA_LOADED, profile.Data)
 
 			-- Инициализируем здоровье и ресурсы
 			self:InitializePlayerResources(player)
@@ -231,7 +231,7 @@ end
 -- Получить данные игрока
 function PlayerDataService:GetData(player)
 	local profile = self:GetProfile(player)
-	return profile and profile.Data
+	return (profile and profile.Data) or nil
 end
 
 -- Проверить, загружены ли данные игрока
@@ -263,7 +263,7 @@ function PlayerDataService:InitializePlayerResources(player)
 	data.Stamina = math.min(data.Stamina, maxStamina)
 
 	-- Уведомляем клиент об изменении ресурсов
-	self:FireClient(player, "PlayerStatsChanged", {
+	self:FireClient(player, Constants.REMOTE_EVENTS.PLAYER_STATS_CHANGED, {
 		Health = data.Health,
 		MaxHealth = maxHealth,
 		Mana = data.Mana,
@@ -290,7 +290,7 @@ function PlayerDataService:AddExperience(player, amount)
 		data.AttributePoints = data.AttributePoints + 5 -- 5 очков за уровень
 
 		-- Уведомляем о повышении уровня
-		self:FireClient(player, "LevelUp", {
+		self:FireClient(player, Constants.REMOTE_EVENTS.LEVEL_UP, {
 			NewLevel = data.Level,
 			AttributePoints = data.AttributePoints,
 		})
@@ -299,7 +299,7 @@ function PlayerDataService:AddExperience(player, amount)
 	end
 
 	-- Уведомляем об изменении опыта
-	self:FireClient(player, "ExperienceChanged", {
+	self:FireClient(player, Constants.REMOTE_EVENTS.EXPERIENCE_CHANGED, {
 		Experience = data.Experience,
 		Level = data.Level,
 		RequiredXP = requiredXP,
@@ -332,7 +332,7 @@ function PlayerDataService:FireClient(player, eventName, data)
 	local ServiceManager = require(script.Parent.Parent.ServiceManager)
 	local RemoteService = ServiceManager:GetService("RemoteService")
 
-	if RemoteService and RemoteService:IsReady() then
+	if RemoteService ~= nil and RemoteService:IsReady() then
 		RemoteService:FireClient(player, eventName, data)
 	else
 		print("[PLAYER DATA] RemoteService not ready, queuing: " .. eventName .. " for " .. player.Name)

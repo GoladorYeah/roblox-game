@@ -71,9 +71,11 @@ function DebugService:OnStart()
 	else
 		-- Старая система чата
 		self:ConnectEvent(Players.PlayerAdded, function(player)
-			player.Chatted:Connect(function(message)
-				self:ProcessChatMessage(player, message)
-			end)
+			if player.Chatted then
+				self:ConnectEvent(player.Chatted, function(message)
+					self:ProcessChatMessage(player, message)
+				end)
+			end
 		end)
 
 		-- Для уже подключенных игроков
@@ -97,7 +99,7 @@ end
 
 -- Обработка сообщений чата
 function DebugService:ProcessChatMessage(player, message)
-	if not message:sub(1, 1) == "/" then
+	if message:sub(1, 1) ~= "/" then
 		return
 	end
 
@@ -157,7 +159,7 @@ function DebugService:AddExperience(player, amount)
 	local ServiceManager = require(script.Parent.Parent.ServiceManager)
 	local PlayerDataService = ServiceManager:GetService("PlayerDataService")
 
-	if PlayerDataService and PlayerDataService:IsDataLoaded(player) then
+	if PlayerDataService ~= nil and PlayerDataService:IsDataLoaded(player) then
 		PlayerDataService:AddExperience(player, amount)
 		self:SendMessage(player, "Добавлено " .. amount .. " опыта!")
 	else
@@ -170,19 +172,22 @@ function DebugService:SetLevel(player, level)
 	local ServiceManager = require(script.Parent.Parent.ServiceManager)
 	local PlayerDataService = ServiceManager:GetService("PlayerDataService")
 
-	if not PlayerDataService or not PlayerDataService:IsDataLoaded(player) then
+	if PlayerDataService == nil or PlayerDataService:IsDataLoaded(player) == false then
 		self:SendMessage(player, "Данные игрока не загружены!")
 		return
 	end
 
 	local data = PlayerDataService:GetData(player)
-	if data then
+	if data ~= nil then
 		level = math.max(1, math.min(level, Constants.PLAYER.MAX_LEVEL))
 		data.Level = level
 		data.Experience = 0
 
 		-- Пересчитываем ресурсы
 		PlayerDataService:InitializePlayerResources(player)
+
+		-- Отправляем обновленные данные клиенту
+		PlayerDataService:FireClient(player, Constants.REMOTE_EVENTS.PLAYER_DATA_LOADED, data)
 
 		self:SendMessage(player, "Уровень установлен на " .. level .. "!")
 	end
@@ -193,14 +198,18 @@ function DebugService:AddGold(player, amount)
 	local ServiceManager = require(script.Parent.Parent.ServiceManager)
 	local PlayerDataService = ServiceManager:GetService("PlayerDataService")
 
-	if not PlayerDataService or not PlayerDataService:IsDataLoaded(player) then
+	if PlayerDataService == nil or PlayerDataService:IsDataLoaded(player) == false then
 		self:SendMessage(player, "Данные игрока не загружены!")
 		return
 	end
 
 	local data = PlayerDataService:GetData(player)
-	if data then
+	if data ~= nil then
 		data.Currency.Gold = data.Currency.Gold + amount
+
+		-- Отправляем обновленные данные клиенту
+		PlayerDataService:FireClient(player, Constants.REMOTE_EVENTS.PLAYER_DATA_LOADED, data)
+
 		self:SendMessage(player, "Добавлено " .. amount .. " золота! Всего: " .. data.Currency.Gold)
 	end
 end
@@ -210,13 +219,13 @@ function DebugService:ShowStats(player)
 	local ServiceManager = require(script.Parent.Parent.ServiceManager)
 	local PlayerDataService = ServiceManager:GetService("PlayerDataService")
 
-	if not PlayerDataService or not PlayerDataService:IsDataLoaded(player) then
+	if PlayerDataService == nil or PlayerDataService:IsDataLoaded(player) == false then
 		self:SendMessage(player, "Данные игрока не загружены!")
 		return
 	end
 
 	local data = PlayerDataService:GetData(player)
-	if data then
+	if data ~= nil then
 		self:SendMessage(player, "=== СТАТИСТИКА ===")
 		self:SendMessage(player, "Уровень: " .. data.Level)
 		self:SendMessage(player, "Опыт: " .. data.Experience)
@@ -231,13 +240,13 @@ function DebugService:HealPlayer(player)
 	local ServiceManager = require(script.Parent.Parent.ServiceManager)
 	local PlayerDataService = ServiceManager:GetService("PlayerDataService")
 
-	if not PlayerDataService or not PlayerDataService:IsDataLoaded(player) then
+	if PlayerDataService == nil or PlayerDataService:IsDataLoaded(player) == false then
 		self:SendMessage(player, "Данные игрока не загружены!")
 		return
 	end
 
 	local data = PlayerDataService:GetData(player)
-	if data then
+	if data ~= nil then
 		local maxHealth = Constants.PLAYER.BASE_HEALTH
 			+ (data.Attributes.Constitution * Constants.PLAYER.HEALTH_PER_CONSTITUTION)
 		data.Health = maxHealth
@@ -256,7 +265,7 @@ function DebugService:SendMessage(player, message)
 	local ServiceManager = require(script.Parent.Parent.ServiceManager)
 	local RemoteService = ServiceManager:GetService("RemoteService")
 
-	if RemoteService and RemoteService:IsReady() then
+	if RemoteService ~= nil and RemoteService:IsReady() then
 		RemoteService:SendSystemMessage(player, message, "INFO")
 	else
 		-- Fallback - отправляем через старую систему чата
