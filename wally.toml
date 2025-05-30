@@ -7,3 +7,4 @@ realm = "shared"
 [dependencies]
 
 [server-dependencies]
+ProfileService = "brittonfischer/profileservice@2.1.5"

@@ -1,0 +1,99 @@
+-- src/server/Main.server.lua
+-- Главный серверный скрипт - точка входа для сервера
+
+local ServerScriptService = game:GetService("ServerScriptService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Импорты
+local ServiceManager = require(ServerScriptService.Server.ServiceManager)
+local Constants = require(ReplicatedStorage.Shared.constants.Constants)
+
+print("=== " .. Constants.GAME_NAME .. " Server Starting ===")
+print("Version: " .. Constants.VERSION)
+
+-- Функция для безопасного require модулей
+local function safeRequire(module, moduleName)
+	local success, result = pcall(require, module)
+	if success then
+		print("[MAIN] Successfully loaded " .. moduleName)
+		return result
+	else
+		warn("[MAIN] Failed to load " .. moduleName .. ": " .. tostring(result))
+		return nil
+	end
+end
+
+-- Регистрация всех сервисов
+local function registerServices()
+	print("[MAIN] Registering services...")
+
+	-- Регистрируем RemoteService первым (нужен для других сервисов)
+	local RemoteService = safeRequire(ServerScriptService.Server.services.RemoteService, "RemoteService")
+	if RemoteService then
+		ServiceManager:RegisterService(RemoteService)
+	end
+
+	-- Регистрируем PlayerDataService
+	local PlayerDataService = safeRequire(ServerScriptService.Server.services.PlayerDataService, "PlayerDataService")
+	if PlayerDataService then
+		ServiceManager:RegisterService(PlayerDataService)
+	end
+
+	-- Регистрируем DebugService (для тестирования)
+	local DebugService = safeRequire(ServerScriptService.Server.services.DebugService, "DebugService")
+	if DebugService then
+		ServiceManager:RegisterService(DebugService)
+	end
+
+	print("[MAIN] All services registered!")
+end
+
+-- Основная функция запуска сервера
+local function main()
+	print("[MAIN] Starting server initialization...")
+
+	-- Регистрируем все сервисы
+	registerServices()
+
+	-- Инициализируем все сервисы
+	ServiceManager:Initialize()
+
+	-- Запускаем все сервисы
+	ServiceManager:StartAll()
+
+	-- Выводим статус всех сервисов
+	local status = ServiceManager:GetStatus()
+	print("[MAIN] Service Status:")
+	for serviceName, serviceStatus in pairs(status) do
+		local statusText = serviceStatus.Ready and "✅ READY" or "❌ NOT READY"
+		print("  " .. serviceName .. ": " .. statusText)
+	end
+
+	print("=== Server Started Successfully! ===")
+end
+
+-- Обработка ошибок при запуске
+local success, errorMessage = pcall(main)
+if not success then
+	error("[MAIN] Server failed to start: " .. tostring(errorMessage))
+end
+
+-- Heartbeat для отладки (каждые 30 секунд)
+spawn(function()
+	while true do
+		wait(Constants.NETWORK.HEARTBEAT_INTERVAL)
+
+		local status = ServiceManager:GetStatus()
+		local readyServices = 0
+		local totalServices = 0
+
+		for _, serviceStatus in pairs(status) do
+			totalServices = totalServices + 1
+			if serviceStatus.Ready then
+				readyServices = readyServices + 1
+			end
+		end
+
+		print("[HEARTBEAT] Services: " .. readyServices .. "/" .. totalServices .. " ready")
+	end
+end)
