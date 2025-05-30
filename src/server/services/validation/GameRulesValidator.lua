@@ -300,6 +300,12 @@ function GameRulesValidator:ValidateEquipmentRules(
 		end
 	end
 
+	-- Используем playerLevel для проверки требований к уровню (если нужно)
+	-- Это заглушка для будущих проверок уровня экипировки
+	if playerLevel < 1 then
+		return ValidationUtils.Failure("Player level too low for any equipment", "LEVEL_TOO_LOW", "EquipmentRules")
+	end
+
 	return ValidationUtils.Success()
 end
 

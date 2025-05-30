@@ -377,8 +377,7 @@ end
 -- Валидация бонусов к опыту
 function ExperienceValidator:ValidateExperienceBonus(
 	bonusType: string,
-	multiplier: number,
-	context: any?
+	multiplier: number
 ): ValidationUtils.ValidationResult
 	-- Проверяем тип бонуса
 	local validBonusTypes = {
@@ -440,57 +439,6 @@ function ExperienceValidator:ValidateExperienceBonus(
 		)
 	end
 
-	-- Валидация контекста бонуса
-	if context then
-		local contextResult = self:ValidateExperienceBonusContext(bonusType, multiplier, context)
-		if not contextResult.IsValid then
-			return contextResult
-		end
-	end
-
-	return ValidationUtils.Success()
-end
-
--- Валидация контекста бонуса опыта
-function ExperienceValidator:ValidateExperienceBonusContext(
-	bonusType: string,
-	multiplier: number,
-	context: any
-): ValidationUtils.ValidationResult
-	if bonusType == "GUILD_BONUS" and context.guildLevel then
-		-- Бонус гильдии должен соответствовать её уровню
-		local maxBonusForLevel = 1.0 + (context.guildLevel * 0.1) -- 10% за уровень гильдии
-		if multiplier > maxBonusForLevel then
-			return ValidationUtils.Failure(
-				string.format(
-					"Guild bonus %.2f too high for guild level %d (max: %.2f)",
-					multiplier,
-					context.guildLevel,
-					maxBonusForLevel
-				),
-				"GUILD_BONUS_TOO_HIGH_FOR_LEVEL",
-				"ExperienceBonusContext"
-			)
-		end
-	end
-
-	if bonusType == "PARTY_BONUS" and context.partySize then
-		-- Бонус группы должен соответствовать её размеру
-		local maxBonusForSize = 1.0 + ((context.partySize - 1) * 0.25) -- 25% за каждого дополнительного члена
-		if multiplier > maxBonusForSize then
-			return ValidationUtils.Failure(
-				string.format(
-					"Party bonus %.2f too high for party size %d (max: %.2f)",
-					multiplier,
-					context.partySize,
-					maxBonusForSize
-				),
-				"PARTY_BONUS_TOO_HIGH_FOR_SIZE",
-				"ExperienceBonusContext"
-			)
-		end
-	end
-
 	return ValidationUtils.Success()
 end
 
@@ -499,8 +447,7 @@ end
 -- Валидация штрафов к опыту
 function ExperienceValidator:ValidateExperiencePenalty(
 	penaltyType: string,
-	multiplier: number,
-	context: any?
+	multiplier: number
 ): ValidationUtils.ValidationResult
 	-- Проверяем тип штрафа
 	local validPenaltyTypes = { "DEATH_PENALTY", "FATIGUE_PENALTY", "DEBUFF_PENALTY", "LEVEL_DIFFERENCE_PENALTY" }

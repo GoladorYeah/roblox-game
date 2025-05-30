@@ -92,6 +92,9 @@ function NetworkValidator:CheckSuspiciousPatterns(
 	eventName: string,
 	data: any
 ): ValidationUtils.ValidationResult
+	-- Логируем для отслеживания подозрительной активности
+	print(string.format("[NETWORK VALIDATOR] Checking patterns for %s event %s", player.Name, eventName))
+
 	-- Проверяем на SQL injection паттерны в строковых данных
 	if data and type(data) == "table" then
 		local function checkSqlInjection(value)
@@ -429,6 +432,9 @@ end
 
 -- Валидация сообщения чата
 function NetworkValidator:ValidateChatMessage(player: Player, message: string): ValidationUtils.ValidationResult
+	-- Логируем для отслеживания чата
+	print(string.format("[NETWORK VALIDATOR] Validating chat message from %s", player.Name))
+
 	-- Проверяем базовую валидность сообщения
 	local messageResult = ValidationUtils.ValidateChatMessage(message)
 	if not messageResult.IsValid then
@@ -460,6 +466,9 @@ end
 
 -- Проверка на спам в чате
 function NetworkValidator:CheckChatSpam(player: Player, message: string): ValidationUtils.ValidationResult
+	-- Логируем проверку спама
+	print(string.format("[NETWORK VALIDATOR] Checking spam for %s", player.Name))
+
 	-- Простая проверка на повторяющиеся символы
 	local repeatedCharPattern = "(..)%1%1%1%1+" -- 5+ повторяющихся символов
 	if string.find(message, repeatedCharPattern) then
@@ -496,6 +505,9 @@ end
 
 -- Проверка на флуд в чате
 function NetworkValidator:CheckChatFlood(player: Player): ValidationUtils.ValidationResult
+	-- Логируем проверку флуда
+	print(string.format("[NETWORK VALIDATOR] Checking flood for %s", player.Name))
+
 	-- Эта проверка должна интегрироваться с системой rate limiting
 	-- Пока что возвращаем успех, так как rate limiting обрабатывается отдельно
 	return ValidationUtils.Success()
@@ -532,6 +544,9 @@ end
 
 -- Валидация попыток эксплойтов
 function NetworkValidator:ValidateExploitAttempt(player: Player, suspiciousData: any): ValidationUtils.ValidationResult
+	-- Логируем проверку эксплойтов
+	print(string.format("[NETWORK VALIDATOR] Checking exploit attempts for %s", player.Name))
+
 	-- Проверяем на подозрительные данные игрока
 	if suspiciousData.Speed and suspiciousData.Speed > 100 then
 		return ValidationUtils.Failure(
@@ -565,6 +580,9 @@ end
 
 -- Валидация целостности данных клиента
 function NetworkValidator:ValidateClientIntegrity(player: Player, clientData: any): ValidationUtils.ValidationResult
+	-- Логируем проверку целостности
+	print(string.format("[NETWORK VALIDATOR] Checking client integrity for %s", player.Name))
+
 	-- Проверяем временные метки
 	if clientData.Timestamp then
 		local serverTime = tick()
