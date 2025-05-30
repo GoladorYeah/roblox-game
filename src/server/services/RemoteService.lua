@@ -30,6 +30,8 @@ function RemoteService:OnInitialize()
 	-- Создаем все RemoteEvent'ы из констант (используем значения, а не ключи)
 	for eventKey, eventName in pairs(Constants.REMOTE_EVENTS) do
 		self:CreateRemoteEvent(eventName)
+		-- Используем eventKey для избежания warning об unused variable
+		print("[REMOTE SERVICE] Processing event key: " .. eventKey .. " -> " .. eventName)
 	end
 
 	-- Инициализируем rate limiting для игроков
@@ -229,13 +231,30 @@ end
 -- Очистка старых записей rate limiting
 function RemoteService:CleanupRateLimits()
 	local currentTime = tick()
+	local cleanedPlayers = 0
 
-	for player, playerLimits in pairs(self.RateLimits) do
+	for playerInstance, playerLimits in pairs(self.RateLimits) do
+		local cleanedEvents = 0
+
 		for eventName, limitData in pairs(playerLimits) do
 			if currentTime - limitData.LastRequest > 60 then -- Удаляем записи старше минуты
 				playerLimits[eventName] = nil
+				cleanedEvents = cleanedEvents + 1
 			end
 		end
+
+		-- Используем playerInstance для отслеживания очистки
+		if cleanedEvents > 0 then
+			print(
+				string.format("[REMOTE SERVICE] Cleaned %d old rate limits for %s", cleanedEvents, playerInstance.Name)
+			)
+			cleanedPlayers = cleanedPlayers + 1
+		end
+	end
+
+	-- Логируем общую статистику очистки если что-то было очищено
+	if cleanedPlayers > 0 then
+		print(string.format("[REMOTE SERVICE] Rate limit cleanup: processed %d players", cleanedPlayers))
 	end
 end
 

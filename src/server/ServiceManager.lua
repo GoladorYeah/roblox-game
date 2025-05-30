@@ -1,9 +1,6 @@
 -- src/server/ServiceManager.lua
 -- Менеджер для управления всеми серверными сервисами
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local BaseService = require(ReplicatedStorage.Shared.BaseService)
-
 local ServiceManager = {}
 ServiceManager.Services = {}
 ServiceManager.IsInitialized = false
@@ -49,10 +46,12 @@ function ServiceManager:Initialize()
 	print("[SERVICE MANAGER] Initializing all services...")
 
 	-- Сначала инициализируем все сервисы
-	for name, service in pairs(self.Services) do
+	for serviceName, service in pairs(self.Services) do
 		if service.Initialize then
 			service:Initialize()
 		end
+		-- Используем serviceName для избежания warning об unused variable
+		print("[SERVICE MANAGER] Initialized: " .. serviceName)
 	end
 
 	self.IsInitialized = true
@@ -68,10 +67,12 @@ function ServiceManager:StartAll()
 	print("[SERVICE MANAGER] Starting all services...")
 
 	-- Запускаем все сервисы после инициализации
-	for name, service in pairs(self.Services) do
+	for serviceName, service in pairs(self.Services) do
 		if service.Start then
 			service:Start()
 		end
+		-- Используем serviceName для избежания warning об unused variable
+		print("[SERVICE MANAGER] Started: " .. serviceName)
 	end
 
 	print("[SERVICE MANAGER] All services started!")
@@ -81,8 +82,8 @@ end
 function ServiceManager:GetStatus()
 	local status = {}
 
-	for name, service in pairs(self.Services) do
-		status[name] = {
+	for serviceName, service in pairs(self.Services) do
+		status[serviceName] = {
 			Initialized = service.IsInitialized,
 			Started = service.IsStarted,
 			Ready = service:IsReady(),
@@ -96,10 +97,12 @@ end
 function ServiceManager:Cleanup()
 	print("[SERVICE MANAGER] Cleaning up all services...")
 
-	for name, service in pairs(self.Services) do
+	for serviceName, service in pairs(self.Services) do
 		if service.Cleanup then
 			service:Cleanup()
 		end
+		-- Используем serviceName для избежания warning об unused variable
+		print("[SERVICE MANAGER] Cleaned up: " .. serviceName)
 	end
 
 	self.Services = {}

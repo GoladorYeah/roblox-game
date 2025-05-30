@@ -127,6 +127,18 @@ function ValidationService:ValidateLevelChange(
 		return ValidationUtils.Failure("Level can only increase by 1 at a time", "INVALID_LEVEL_JUMP", "LevelChange")
 	end
 
+	-- Логируем валидацию уровня если указан playerId
+	if playerId then
+		print(
+			string.format(
+				"[VALIDATION] Level change validated for player %d: %d -> %d",
+				playerId,
+				currentLevel,
+				newLevel
+			)
+		)
+	end
+
 	return ValidationUtils.Success()
 end
 
@@ -163,6 +175,18 @@ function ValidationService:ValidateExperienceChange(
 			string.format("Experience gain too large: %d (max: %d)", addedExp, maxExpPerAction),
 			"EXCESSIVE_EXPERIENCE_GAIN",
 			"ExperienceChange"
+		)
+	end
+
+	-- Логируем валидацию опыта если указан playerId
+	if playerId then
+		print(
+			string.format(
+				"[VALIDATION] Experience change validated for player %d: +%d (total: %d)",
+				playerId,
+				addedExp,
+				currentExp + addedExp
+			)
 		)
 	end
 
@@ -216,13 +240,27 @@ function ValidationService:ValidateGoldTransaction(
 		)
 	end
 
+	-- Логируем валидацию золота если указан playerId
+	if playerId then
+		print(
+			string.format(
+				"[VALIDATION] Gold transaction validated for player %d: %s %d (%d -> %d)",
+				playerId,
+				transactionType,
+				change,
+				currentGold,
+				newGold
+			)
+		)
+	end
+
 	return ValidationUtils.Success()
 end
 
 -- Валидация сетевых запросов
 function ValidationService:ValidateNetworkRequest(
 	player: Player,
-	eventName: string,
+	requestEventName: string,
 	data: any
 ): ValidationUtils.ValidationResult
 	-- Проверяем игрока
@@ -230,8 +268,8 @@ function ValidationService:ValidateNetworkRequest(
 		return ValidationUtils.Failure("Invalid player", "INVALID_PLAYER", "NetworkRequest")
 	end
 
-	-- Проверяем имя события
-	local eventNameResult = ValidationUtils.ValidateNonEmptyString(eventName, "EventName")
+	-- Проверяем имя события (переименовали параметр чтобы избежать shadowing)
+	local eventNameResult = ValidationUtils.ValidateNonEmptyString(requestEventName, "EventName")
 	if not eventNameResult.IsValid then
 		return eventNameResult
 	end
@@ -242,8 +280,12 @@ function ValidationService:ValidateNetworkRequest(
 		validEvents[eventName] = true
 	end
 
-	if not validEvents[eventName] then
-		return ValidationUtils.Failure(string.format("Unknown event: %s", eventName), "UNKNOWN_EVENT", "NetworkRequest")
+	if not validEvents[requestEventName] then
+		return ValidationUtils.Failure(
+			string.format("Unknown event: %s", requestEventName),
+			"UNKNOWN_EVENT",
+			"NetworkRequest"
+		)
 	end
 
 	-- Проверяем размер данных
@@ -277,7 +319,14 @@ function ValidationService:ValidateInventoryOperation(
 	-- Будет реализовано при создании системы инвентаря
 
 	local validOperations = { "ADD_ITEM", "REMOVE_ITEM", "MOVE_ITEM", "SPLIT_STACK", "MERGE_STACK" }
-	return ValidationUtils.ValidateEnum(operation, validOperations, "InventoryOperation")
+	local result = ValidationUtils.ValidateEnum(operation, validOperations, "InventoryOperation")
+
+	-- Логируем для будущей реализации если указан playerId
+	if playerId and itemData then
+		print(string.format("[VALIDATION] Inventory operation validated for player %d: %s", playerId, operation))
+	end
+
+	return result
 end
 
 ---[[ ИГРОВЫЕ ПРАВИЛА ]]---
@@ -323,6 +372,11 @@ function ValidationService:ValidateGameSpecificRules(data: any, playerId: number
 		if data.Statistics.MobsKilled and data.Statistics.MobsKilled < 0 then
 			return ValidationUtils.Failure("Mobs killed cannot be negative", "NEGATIVE_MOBS_KILLED", "GameRules")
 		end
+	end
+
+	-- Логируем успешную валидацию игровых правил если указан playerId
+	if playerId then
+		print(string.format("[VALIDATION] Game rules validated for player %d", playerId))
 	end
 
 	return ValidationUtils.Success()
@@ -594,6 +648,9 @@ function ValidationService:ValidateAdminAction(
 			end
 		end
 	end
+
+	-- Логируем админское действие
+	print(string.format("[VALIDATION] Admin action validated: %s by %s", action, adminPlayer.Name))
 
 	return ValidationUtils.Success()
 end

@@ -77,10 +77,11 @@ end
 function DataController:OnPlayerDataLoaded(data)
 	print("[DATA CONTROLLER] Player data loaded/updated!")
 
+	local isFirstLoad = self.PlayerData == nil
 	self.PlayerData = data
 
-	-- Вызываем все отложенные callbacks только при первой загрузке
-	if #self.DataLoadedCallbacks > 0 then
+	-- Вызываем callbacks только при ПЕРВОЙ загрузке
+	if isFirstLoad and #self.DataLoadedCallbacks > 0 then
 		for _, callback in ipairs(self.DataLoadedCallbacks) do
 			spawn(function()
 				callback(data)
@@ -90,12 +91,13 @@ function DataController:OnPlayerDataLoaded(data)
 
 		-- Уведомляем о загрузке данных только при первой загрузке
 		self.DataLoaded:Fire(data)
-
 		self:PrintPlayerInfo()
 	end
 
-	-- Обновляем UI при каждом обновлении данных
-	self:UpdateUI()
+	-- Обновляем UI ТОЛЬКО если это первая загрузка или значительное изменение
+	if isFirstLoad then
+		self:UpdateUI()
+	end
 end
 
 -- Обработка изменения статов
@@ -115,7 +117,7 @@ function DataController:OnStatsChanged(stats)
 	-- Уведомляем об изменении статов
 	self.StatsChanged:Fire(stats)
 
-	-- Обновляем UI
+	-- Обновляем UI (это обновление нужно для статов)
 	self:UpdateUI()
 end
 
@@ -211,20 +213,34 @@ function DataController:GetWeaponMastery(weaponType)
 	return self.PlayerData.WeaponMastery[weaponType] or { Level = 1, Experience = 0 }
 end
 
--- Рассчитать максимальное здоровье
+-- Рассчитать максимальное здоровье (теперь берем с сервера)
 function DataController:GetMaxHealth()
+	if self.PlayerData and self.PlayerData.MaxHealth then
+		-- Используем значение с сервера если доступно
+		return self.PlayerData.MaxHealth
+	end
+
+	-- Fallback расчет если сервер не прислал
 	local attributes = self:GetAttributes()
 	return Constants.PLAYER.BASE_HEALTH + (attributes.Constitution * Constants.PLAYER.HEALTH_PER_CONSTITUTION)
 end
 
--- Рассчитать максимальную ману
+-- Рассчитать максимальную ману (теперь берем с сервера)
 function DataController:GetMaxMana()
+	if self.PlayerData and self.PlayerData.MaxMana then
+		return self.PlayerData.MaxMana
+	end
+
 	local attributes = self:GetAttributes()
 	return Constants.PLAYER.BASE_MANA + (attributes.Intelligence * Constants.PLAYER.MANA_PER_INTELLIGENCE)
 end
 
--- Рассчитать максимальную выносливость
+-- Рассчитать максимальную выносливость (теперь берем с сервера)
 function DataController:GetMaxStamina()
+	if self.PlayerData and self.PlayerData.MaxStamina then
+		return self.PlayerData.MaxStamina
+	end
+
 	local attributes = self:GetAttributes()
 	return Constants.PLAYER.BASE_STAMINA + (attributes.Constitution * Constants.PLAYER.STAMINA_PER_CONSTITUTION)
 end

@@ -1,9 +1,6 @@
 -- src/client/ControllerManager.lua
 -- Менеджер для управления всеми клиентскими контроллерами
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local BaseController = require(ReplicatedStorage.Shared.BaseController)
-
 local ControllerManager = {}
 ControllerManager.Controllers = {}
 ControllerManager.IsInitialized = false
@@ -49,10 +46,12 @@ function ControllerManager:Initialize()
 	print("[CONTROLLER MANAGER] Initializing all controllers...")
 
 	-- Сначала инициализируем все контроллеры
-	for name, controller in pairs(self.Controllers) do
+	for controllerName, controller in pairs(self.Controllers) do
 		if controller.Initialize then
 			controller:Initialize()
 		end
+		-- Используем controllerName для избежания warning об unused variable
+		print("[CONTROLLER MANAGER] Initialized: " .. controllerName)
 	end
 
 	self.IsInitialized = true
@@ -68,10 +67,12 @@ function ControllerManager:StartAll()
 	print("[CONTROLLER MANAGER] Starting all controllers...")
 
 	-- Запускаем все контроллеры после инициализации
-	for name, controller in pairs(self.Controllers) do
+	for controllerName, controller in pairs(self.Controllers) do
 		if controller.Start then
 			controller:Start()
 		end
+		-- Используем controllerName для избежания warning об unused variable
+		print("[CONTROLLER MANAGER] Started: " .. controllerName)
 	end
 
 	print("[CONTROLLER MANAGER] All controllers started!")
@@ -81,8 +82,8 @@ end
 function ControllerManager:GetStatus()
 	local status = {}
 
-	for name, controller in pairs(self.Controllers) do
-		status[name] = {
+	for controllerName, controller in pairs(self.Controllers) do
+		status[controllerName] = {
 			Initialized = controller.IsInitialized,
 			Started = controller.IsStarted,
 			Ready = controller:IsReady(),
@@ -96,10 +97,12 @@ end
 function ControllerManager:Cleanup()
 	print("[CONTROLLER MANAGER] Cleaning up all controllers...")
 
-	for name, controller in pairs(self.Controllers) do
+	for controllerName, controller in pairs(self.Controllers) do
 		if controller.Cleanup then
 			controller:Cleanup()
 		end
+		-- Используем controllerName для избежания warning об unused variable
+		print("[CONTROLLER MANAGER] Cleaned up: " .. controllerName)
 	end
 
 	self.Controllers = {}

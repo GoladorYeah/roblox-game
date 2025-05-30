@@ -7,7 +7,7 @@ local StarterPlayerScripts = game:GetService("StarterPlayer").StarterPlayerScrip
 
 -- Ждем загрузки персонажа
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+-- Убираем неиспользуемую переменную PlayerGui
 
 -- Импорты
 local ControllerManager = require(StarterPlayerScripts.Client.ControllerManager)

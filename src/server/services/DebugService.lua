@@ -3,6 +3,7 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
 local TextChatService = game:GetService("TextChatService")
 
 local BaseService = require(ReplicatedStorage.Shared.BaseService)
@@ -30,6 +31,16 @@ function DebugService:OnInitialize()
 		local amount = tonumber(args[1]) or 100
 		self:AddExperience(player, amount)
 	end)
+
+	-- ДОПОЛНИТЕЛЬНО: Добавить команду для установки опыта
+	self:RegisterCommand(
+		"setexp",
+		"Установить опыт: /setexp [количество]",
+		function(player, args)
+			local experience = tonumber(args[1]) or 0
+			self:SetExperience(player, experience)
+		end
+	)
 
 	self:RegisterCommand(
 		"setlevel",
@@ -69,6 +80,20 @@ function DebugService:OnInitialize()
 
 	self:RegisterCommand("resetval", "Сброс статистики валидации", function(player, _)
 		self:ResetValidationStats(player)
+	end)
+
+	self:RegisterCommand("perf", "Статистика производительности", function(player, _)
+		self:ShowPerformanceStats(player)
+	end)
+
+	-- Диагностика системы опыта
+	self:RegisterCommand("xpdiag", "Диагностика опыта", function(player, _)
+		self:DiagnoseExperience(player)
+	end)
+
+	-- Исправить опыт для текущего уровня
+	self:RegisterCommand("fixexp", "Исправить опыт", function(player, _)
+		self:FixPlayerExperience(player)
 	end)
 end
 
@@ -181,9 +206,9 @@ function DebugService:AddExperience(player, amount)
 	end
 end
 
--- Установить уровень
+-- Установить уровень (ИСПРАВЛЕННАЯ ВЕРСИЯ)
 function DebugService:SetLevel(player, level)
-	local ServiceManager = require(script.Parent.Parent.ServiceManager)
+	local ServiceManager = require(ServerScriptService.Server.ServiceManager)
 	local PlayerDataService = ServiceManager:GetService("PlayerDataService")
 
 	if PlayerDataService == nil or PlayerDataService:IsDataLoaded(player) == false then
@@ -194,16 +219,139 @@ function DebugService:SetLevel(player, level)
 	local data = PlayerDataService:GetData(player)
 	if data ~= nil then
 		level = math.max(1, math.min(level, Constants.PLAYER.MAX_LEVEL))
-		data.Level = level
-		data.Experience = 0
 
-		-- Пересчитываем ресурсы
+		-- ИСПРАВЛЕНИЕ: Рассчитываем правильный опыт для уровня
+		local totalExperience = 0
+
+		-- Суммируем опыт, необходимый для достижения указанного уровня
+		for currentLevel = 1, level - 1 do
+			local expRequired =
+				math.floor(Constants.EXPERIENCE.BASE_XP_REQUIRED * (currentLevel ^ Constants.EXPERIENCE.XP_MULTIPLIER))
+			totalExperience = totalExperience + expRequired
+		end
+
+		-- Устанавливаем уровень и соответствующий опыт
+		data.Level = level
+		data.Experience = totalExperience -- Опыт в начале уровня (0 прогресса к следующему)
+
+		-- Добавляем очки атрибутов за новые уровни (если повышаем)
+		if level > 1 then
+			data.AttributePoints = (level - 1) * 5 -- 5 очков за каждый уровень после первого
+		else
+			data.AttributePoints = 0
+		end
+
+		-- Пересчитываем ресурсы с новыми характеристиками
 		PlayerDataService:InitializePlayerResources(player)
 
 		-- Отправляем обновленные данные клиенту
 		PlayerDataService:FireClient(player, Constants.REMOTE_EVENTS.PLAYER_DATA_LOADED, data)
 
-		self:SendMessage(player, "Уровень установлен на " .. level .. "!")
+		-- Отправляем событие повышения уровня для эффектов
+		PlayerDataService:FireClient(player, Constants.REMOTE_EVENTS.LEVEL_UP, {
+			NewLevel = level,
+			AttributePoints = data.AttributePoints,
+		})
+
+		self:SendMessage(
+			player,
+			string.format(
+				"Уровень установлен на %d! Опыт: %d, Очки атрибутов: %d",
+				level,
+				totalExperience,
+				data.AttributePoints
+			)
+		)
+
+		-- Логируем для отладки
+		print(
+			string.format(
+				"[DEBUG] %s level set to %d (XP: %d, Points: %d)",
+				player.Name,
+				level,
+				totalExperience,
+				data.AttributePoints
+			)
+		)
+	end
+end
+
+-- Установить опыт (новый метод)
+function DebugService:SetExperience(player, experience)
+	local ServiceManager = require(script.Parent.Parent.ServiceManager)
+	local PlayerDataService = ServiceManager:GetService("PlayerDataService")
+
+	if PlayerDataService == nil or PlayerDataService:IsDataLoaded(player) == false then
+		self:SendMessage(player, "Данные игрока не загружены!")
+		return
+	end
+
+	local data = PlayerDataService:GetData(player)
+	if data ~= nil then
+		experience = math.max(0, experience)
+
+		-- Сохраняем старые значения для сравнения
+		local oldLevel = data.Level
+		local oldExperience = data.Experience
+
+		-- Устанавливаем новый опыт
+		data.Experience = experience
+
+		-- Пересчитываем уровень на основе опыта
+		local newLevel = 1
+		local currentExp = experience
+
+		while newLevel < Constants.PLAYER.MAX_LEVEL do
+			local expRequired =
+				math.floor(Constants.EXPERIENCE.BASE_XP_REQUIRED * (newLevel ^ Constants.EXPERIENCE.XP_MULTIPLIER))
+			if currentExp < expRequired then
+				break
+			end
+			currentExp = currentExp - expRequired
+			newLevel = newLevel + 1
+		end
+
+		-- Устанавливаем новый уровень и остаток опыта
+		data.Level = newLevel
+		data.Experience = currentExp
+
+		-- Пересчитываем очки атрибутов
+		data.AttributePoints = math.max(0, (newLevel - 1) * 5)
+
+		-- Пересчитываем ресурсы
+		PlayerDataService:InitializePlayerResources(player)
+
+		-- Отправляем обновленные данные
+		PlayerDataService:FireClient(player, Constants.REMOTE_EVENTS.PLAYER_DATA_LOADED, data)
+
+		-- Если уровень изменился, отправляем событие
+		if newLevel ~= oldLevel then
+			PlayerDataService:FireClient(player, Constants.REMOTE_EVENTS.LEVEL_UP, {
+				NewLevel = newLevel,
+				AttributePoints = data.AttributePoints,
+			})
+		end
+
+		self:SendMessage(
+			player,
+			string.format(
+				"Опыт установлен! Уровень: %d, Опыт: %d/%d",
+				newLevel,
+				currentExp,
+				math.floor(Constants.EXPERIENCE.BASE_XP_REQUIRED * (newLevel ^ Constants.EXPERIENCE.XP_MULTIPLIER))
+			)
+		)
+
+		print(
+			string.format(
+				"[DEBUG] %s experience set: Level %d -> %d, XP %d -> %d",
+				player.Name,
+				oldLevel,
+				newLevel,
+				oldExperience,
+				currentExp
+			)
+		)
 	end
 end
 
@@ -269,6 +417,201 @@ function DebugService:HealPlayer(player)
 
 		self:SendMessage(player, "Здоровье восстановлено!")
 	end
+end
+
+-- Показать статистику производительности
+function DebugService:ShowPerformanceStats(player)
+	local ServiceManager = require(script.Parent.Parent.ServiceManager)
+
+	self:SendMessage(player, "=== ПРОИЗВОДИТЕЛЬНОСТЬ ===")
+
+	-- Статистика валидации
+	local ValidationService = ServiceManager:GetService("ValidationService")
+	if ValidationService then
+		local stats = ValidationService:GetValidationStatistics()
+		self:SendMessage(
+			player,
+			string.format("Валидации: %d (%.1f%% успех)", stats.TotalValidations, stats.SuccessRate)
+		)
+		self:SendMessage(player, string.format("Кэш: %.1f%% попаданий", stats.CacheHitRate))
+	end
+
+	-- Статистика сети
+	local RemoteService = ServiceManager:GetService("RemoteService")
+	if RemoteService then
+		local netStats = RemoteService:GetNetworkStats()
+		self:SendMessage(
+			player,
+			string.format(
+				"События: %d, Функции: %d",
+				netStats.TotalRemoteEvents,
+				netStats.TotalRemoteFunctions
+			)
+		)
+		self:SendMessage(player, string.format("Активные лимиты: %d", netStats.ActiveRateLimits))
+	end
+
+	-- Статистика игроков
+	local PlayerDataService = ServiceManager:GetService("PlayerDataService")
+	if PlayerDataService then
+		local playerCount = 0
+		for _ in pairs(PlayerDataService.Profiles) do
+			playerCount = playerCount + 1
+		end
+		self:SendMessage(player, string.format("Загружено профилей: %d", playerCount))
+	end
+
+	-- Память (примерно)
+	self:SendMessage(player, string.format("Память: %.1f MB", collectgarbage("count") / 1024))
+end
+
+-- === МЕТОДЫ ДИАГНОСТИКИ ===
+
+-- Диагностика опыта
+function DebugService:DiagnoseExperience(player)
+	local ServiceManager = require(script.Parent.Parent.ServiceManager)
+	local PlayerDataService = ServiceManager:GetService("PlayerDataService")
+
+	if not PlayerDataService:IsDataLoaded(player) then
+		self:SendMessage(player, "❌ Данные не загружены")
+		return
+	end
+
+	local data = PlayerDataService:GetData(player)
+	if not data then
+		self:SendMessage(player, "❌ Данные недоступны")
+		return
+	end
+
+	self:SendMessage(player, "=== ДИАГНОСТИКА ОПЫТА ===")
+	self:SendMessage(player, string.format("Текущий уровень: %d", data.Level))
+	self:SendMessage(player, string.format("Текущий опыт: %d", data.Experience))
+
+	-- Рассчитываем правильный опыт для уровня
+	local expForCurrentLevel = PlayerDataService:GetRequiredExperience(data.Level)
+	self:SendMessage(player, string.format("Нужно для %d уровня: %d", data.Level, expForCurrentLevel))
+
+	-- Рассчитываем какой уровень должен быть при текущем опыте
+	local totalExp = data.Experience
+	local calculatedLevel = 1
+	local expUsed = 0
+
+	-- Суммируем опыт от всех предыдущих уровней
+	for level = 1, data.Level - 1 do
+		local expRequired = PlayerDataService:GetRequiredExperience(level)
+		expUsed = expUsed + expRequired
+	end
+
+	local totalExpShould = expUsed + data.Experience
+	self:SendMessage(player, string.format("Общий опыт должен быть: %d", totalExpShould))
+
+	-- Рассчитываем правильный уровень
+	local tempExp = totalExpShould
+	local correctLevel = 1
+
+	while correctLevel < Constants.PLAYER.MAX_LEVEL do
+		local expRequired = PlayerDataService:GetRequiredExperience(correctLevel)
+		if tempExp < expRequired then
+			break
+		end
+		tempExp = tempExp - expRequired
+		correctLevel = correctLevel + 1
+	end
+
+	self:SendMessage(player, string.format("Правильный уровень: %d", correctLevel))
+	self:SendMessage(player, string.format("Остаток опыта: %d", tempExp))
+
+	if correctLevel ~= data.Level then
+		self:SendMessage(player, "⚠️ НЕСООТВЕТСТВИЕ! Используйте /fixexp")
+	else
+		if data.Experience >= expForCurrentLevel then
+			self:SendMessage(player, "⚠️ Слишком много опыта для уровня!")
+		else
+			self:SendMessage(player, "✅ Опыт в норме")
+		end
+	end
+end
+
+-- Исправить опыт игрока
+function DebugService:FixPlayerExperience(player)
+	local ServiceManager = require(script.Parent.Parent.ServiceManager)
+	local PlayerDataService = ServiceManager:GetService("PlayerDataService")
+
+	if not PlayerDataService:IsDataLoaded(player) then
+		self:SendMessage(player, "❌ Данные не загружены")
+		return
+	end
+
+	local data = PlayerDataService:GetData(player)
+	if not data then
+		self:SendMessage(player, "❌ Данные недоступны")
+		return
+	end
+
+	local oldLevel = data.Level
+	local oldExp = data.Experience
+
+	-- Вариант 1: Рассчитать правильный опыт для текущего уровня
+	-- (сбросить опыт в начало уровня)
+	local resetToLevelStart = function()
+		data.Experience = 0
+		self:SendMessage(player, string.format("Опыт сброшен к началу %d уровня", data.Level))
+	end
+
+	-- Вариант 2: Рассчитать правильный уровень для текущего опыта
+	local recalculateLevel = function()
+		-- Суммируем весь опыт
+		local totalExp = 0
+		for level = 1, oldLevel - 1 do
+			totalExp = totalExp + PlayerDataService:GetRequiredExperience(level)
+		end
+		totalExp = totalExp + oldExp
+
+		-- Пересчитываем уровень
+		local newLevel = 1
+		local remainingExp = totalExp
+
+		while newLevel < Constants.PLAYER.MAX_LEVEL do
+			local expRequired = PlayerDataService:GetRequiredExperience(newLevel)
+			if remainingExp < expRequired then
+				break
+			end
+			remainingExp = remainingExp - expRequired
+			newLevel = newLevel + 1
+		end
+
+		data.Level = newLevel
+		data.Experience = remainingExp
+		data.AttributePoints = math.max(0, (newLevel - 1) * 5)
+
+		self:SendMessage(player, string.format("Пересчитано: Уровень %d -> %d", oldLevel, newLevel))
+		self:SendMessage(player, string.format("Опыт: %d -> %d", oldExp, remainingExp))
+	end
+
+	-- Проверяем какой вариант нужен
+	local expForCurrentLevel = PlayerDataService:GetRequiredExperience(data.Level)
+
+	if data.Experience >= expForCurrentLevel then
+		-- Слишком много опыта - пересчитываем уровень
+		recalculateLevel()
+	else
+		-- Опыт в норме, но могли быть проблемы - оставляем как есть
+		self:SendMessage(player, "✅ Опыт уже в норме")
+		return
+	end
+
+	-- Пересчитываем ресурсы и отправляем обновления
+	PlayerDataService:InitializePlayerResources(player)
+	PlayerDataService:FireClient(player, Constants.REMOTE_EVENTS.PLAYER_DATA_LOADED, data)
+
+	if data.Level ~= oldLevel then
+		PlayerDataService:FireClient(player, Constants.REMOTE_EVENTS.LEVEL_UP, {
+			NewLevel = data.Level,
+			AttributePoints = data.AttributePoints,
+		})
+	end
+
+	self:SendMessage(player, "✅ Опыт исправлен!")
 end
 
 -- НОВЫЕ МЕТОДЫ ДЛЯ ВАЛИДАЦИИ

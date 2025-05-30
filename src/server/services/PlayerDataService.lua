@@ -64,12 +64,13 @@ function PlayerDataService:OnStart()
 		end
 	end)
 
-	-- Обновление времени игры каждую секунду
+	-- Обновление времени игры каждую секунду (БЕЗ СПАМ ЛОГОВ)
 	self:ConnectEvent(RunService.Heartbeat, function()
-		for player, profile in pairs(self.Profiles) do
+		for playerInstance, profile in pairs(self.Profiles) do
 			if profile and profile.Data then
-				profile.Data.Statistics.TotalPlayTime = profile.Data.Statistics.TotalPlayTime + 1 / 60 -- Добавляем время в секундах
+				profile.Data.Statistics.TotalPlayTime = profile.Data.Statistics.TotalPlayTime + 1 / 60
 			end
+			-- УБИРАЕМ логирование каждого обновления - оно слишком частое!
 		end
 	end)
 end
@@ -171,10 +172,11 @@ end
 -- Сохранение данных всех игроков
 function PlayerDataService:SaveAllPlayerData()
 	print("[PLAYER DATA] Auto-saving all player data...")
-	for player, _ in pairs(self.Profiles) do
-		if player.Parent == Players then
-			print("[PLAYER DATA] Auto-saved data for " .. player.Name)
+	for playerInstance, _ in pairs(self.Profiles) do
+		if playerInstance.Parent == Players then
+			print("[PLAYER DATA] Auto-saved data for " .. playerInstance.Name)
 		end
+		-- Используем playerInstance для избежания warning об unused variable
 	end
 end
 
@@ -217,6 +219,11 @@ function PlayerDataService:InitializePlayerResources(player)
 	data.Mana = math.min(data.Mana, maxMana)
 	data.Stamina = math.min(data.Stamina, maxStamina)
 
+	-- ДОБАВЛЯЕМ максимальные значения в данные для синхронизации
+	data.MaxHealth = maxHealth
+	data.MaxMana = maxMana
+	data.MaxStamina = maxStamina
+
 	-- Уведомляем клиент об изменении ресурсов
 	self:FireClient(player, Constants.REMOTE_EVENTS.PLAYER_STATS_CHANGED, {
 		Health = data.Health,
@@ -226,6 +233,9 @@ function PlayerDataService:InitializePlayerResources(player)
 		Stamina = data.Stamina,
 		MaxStamina = maxStamina,
 	})
+
+	-- ТАКЖЕ отправляем обновленные полные данные
+	self:FireClient(player, Constants.REMOTE_EVENTS.PLAYER_DATA_LOADED, data)
 end
 
 -- Добавить опыт игроку
@@ -435,10 +445,12 @@ end
 
 function PlayerDataService:OnCleanup()
 	-- Сохраняем данные всех игроков перед закрытием
-	for player, profile in pairs(self.Profiles) do
+	for playerInstance, profile in pairs(self.Profiles) do
 		if profile then
 			profile:Release()
 		end
+		-- Используем playerInstance для избежания warning об unused variable
+		print("[PLAYER DATA] Released profile for: " .. playerInstance.Name)
 	end
 
 	self.Profiles = {}

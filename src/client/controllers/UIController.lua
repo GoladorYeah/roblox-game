@@ -19,6 +19,10 @@ function UIController.new()
 	-- UI элементы
 	self.MainHUD = nil
 
+	-- ДОБАВЛЯЕМ дебаунс для предотвращения спама обновлений
+	self.LastUpdateTime = 0
+	self.UpdateCooldown = 0.1 -- 100мс между обновлениями
+
 	return self
 end
 
@@ -104,8 +108,15 @@ function UIController:CreateMainHUD()
 	print("[UI CONTROLLER] Main HUD created!")
 end
 
--- Обновить статистики на UI
+-- Обновить статистики на UI (С ДЕБАУНСОМ)
 function UIController:UpdateStats(data)
+	-- Проверяем дебаунс
+	local currentTime = tick()
+	if currentTime - self.LastUpdateTime < self.UpdateCooldown then
+		return -- Слишком частые обновления, пропускаем
+	end
+	self.LastUpdateTime = currentTime
+
 	if self.MainHUD == nil then
 		print("[UI CONTROLLER] MainHUD is nil!")
 		return

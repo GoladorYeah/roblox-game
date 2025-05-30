@@ -99,10 +99,13 @@ export type PlayerProfile = {
 	Attributes: PlayerAttributes,
 	AttributePoints: number,
 
-	-- Ресурсы
+	-- Ресурсы (ДОБАВЛЯЕМ максимальные значения)
 	Health: number,
 	Mana: number,
 	Stamina: number,
+	MaxHealth: number, -- НОВОЕ
+	MaxMana: number, -- НОВОЕ
+	MaxStamina: number, -- НОВОЕ
 
 	-- Инвентарь и экипировка
 	Inventory: { any }, -- Будет детализировано в ItemTypes
@@ -256,6 +259,13 @@ end
 
 -- Функция для создания дефолтного профиля с валидацией
 function PlayerTypes.CreateDefaultProfile(): PlayerProfile
+	local baseHealth = Constants.PLAYER.BASE_HEALTH
+		+ (Constants.PLAYER.BASE_ATTRIBUTES.Constitution * Constants.PLAYER.HEALTH_PER_CONSTITUTION)
+	local baseMana = Constants.PLAYER.BASE_MANA
+		+ (Constants.PLAYER.BASE_ATTRIBUTES.Intelligence * Constants.PLAYER.MANA_PER_INTELLIGENCE)
+	local baseStamina = Constants.PLAYER.BASE_STAMINA
+		+ (Constants.PLAYER.BASE_ATTRIBUTES.Constitution * Constants.PLAYER.STAMINA_PER_CONSTITUTION)
+
 	return {
 		Level = Constants.PLAYER.START_LEVEL,
 		Experience = Constants.PLAYER.START_EXPERIENCE,
@@ -270,9 +280,12 @@ function PlayerTypes.CreateDefaultProfile(): PlayerProfile
 
 		AttributePoints = 0,
 
-		Health = Constants.PLAYER.BASE_HEALTH,
-		Mana = Constants.PLAYER.BASE_MANA,
-		Stamina = Constants.PLAYER.BASE_STAMINA,
+		Health = baseHealth,
+		Mana = baseMana,
+		Stamina = baseStamina,
+		MaxHealth = baseHealth, -- НОВОЕ
+		MaxMana = baseMana, -- НОВОЕ
+		MaxStamina = baseStamina, -- НОВОЕ
 
 		Inventory = {},
 		Equipment = {
