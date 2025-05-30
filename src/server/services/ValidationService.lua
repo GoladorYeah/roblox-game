@@ -1,11 +1,16 @@
 -- src/server/services/ValidationService.lua
--- Централизованный сервис для валидации всех данных
+-- Основной сервис валидации - координирует все типы проверок
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local BaseService = require(ReplicatedStorage.Shared.BaseService)
 local ValidationUtils = require(ReplicatedStorage.Shared.utils.ValidationUtils)
-local Constants = require(ReplicatedStorage.Shared.constants.Constants)
+
+-- Импортируем модули валидаторов
+local PlayerValidator = require(script.Parent.validation.PlayerValidator)
+local ExperienceValidator = require(script.Parent.validation.ExperienceValidator)
+local NetworkValidator = require(script.Parent.validation.NetworkValidator)
+local GameRulesValidator = require(script.Parent.validation.GameRulesValidator)
 
 local ValidationService = setmetatable({}, { __index = BaseService })
 ValidationService.__index = ValidationService
@@ -36,12 +41,25 @@ function ValidationService.new()
 		ThrowOnValidationError = false, -- Для разработки
 	}
 
+	-- Модули валидаторов
+	self.PlayerValidator = PlayerValidator.new(self)
+	self.ExperienceValidator = ExperienceValidator.new(self)
+	self.NetworkValidator = NetworkValidator.new(self)
+	self.GameRulesValidator = GameRulesValidator.new(self)
+
 	return self
 end
 
 function ValidationService:OnInitialize()
 	print("[VALIDATION SERVICE] Initializing validation rules...")
-	self:InitializeValidationRules()
+
+	-- Инициализируем все валидаторы
+	self.PlayerValidator:Initialize()
+	self.ExperienceValidator:Initialize()
+	self.NetworkValidator:Initialize()
+	self.GameRulesValidator:Initialize()
+
+	print("[VALIDATION SERVICE] All validators initialized")
 end
 
 function ValidationService:OnStart()
@@ -54,12 +72,6 @@ function ValidationService:OnStart()
 			self:CleanupCache()
 		end
 	end)
-end
-
--- Инициализация правил валидации
-function ValidationService:InitializeValidationRules()
-	-- Здесь можно добавить специфичные для игры правила валидации
-	print("[VALIDATION SERVICE] Validation rules initialized")
 end
 
 ---[[ ОСНОВНЫЕ МЕТОДЫ ВАЛИДАЦИИ ]]---
@@ -77,26 +89,16 @@ function ValidationService:ValidatePlayerData(data: any, playerId: number?): Val
 		end
 	end
 
-	-- Выполняем валидацию
-	local result = ValidationUtils.ValidatePlayerProfile(data)
+	-- Выполняем валидацию через PlayerValidator
+	local result = self.PlayerValidator:ValidatePlayerProfile(data)
 
-	-- Дополнительные проверки для игровых данных
+	-- Дополнительные проверки игровых правил
 	if result.IsValid then
-		result = self:ValidateGameSpecificRules(data, playerId)
+		result = self.GameRulesValidator:ValidateGameSpecificRules(data, playerId)
 	end
 
-	-- Сохраняем в кэш
-	if self.Settings.EnableCaching then
-		self:SaveToCache(cacheKey, result)
-	end
-
-	-- Обновляем статистику
-	self:UpdateValidationStats(result)
-
-	-- Логируем при необходимости
-	if not result.IsValid and self.Settings.LogFailedValidations then
-		self:LogValidationFailure("PlayerData", result, playerId)
-	end
+	-- Сохраняем в кэш и обновляем статистику
+	self:ProcessValidationResult(result, cacheKey, "PlayerData", playerId)
 
 	return result
 end
@@ -107,39 +109,9 @@ function ValidationService:ValidateLevelChange(
 	newLevel: number,
 	playerId: number?
 ): ValidationUtils.ValidationResult
-	-- Проверяем базовую валидность уровней
-	local currentLevelResult = ValidationUtils.ValidatePlayerLevel(currentLevel)
-	if not currentLevelResult.IsValid then
-		return currentLevelResult
-	end
-
-	local newLevelResult = ValidationUtils.ValidatePlayerLevel(newLevel)
-	if not newLevelResult.IsValid then
-		return newLevelResult
-	end
-
-	-- Проверяем логику изменения уровня
-	if newLevel < currentLevel then
-		return ValidationUtils.Failure("Level cannot decrease", "INVALID_LEVEL_DECREASE", "LevelChange")
-	end
-
-	if newLevel > currentLevel + 1 then
-		return ValidationUtils.Failure("Level can only increase by 1 at a time", "INVALID_LEVEL_JUMP", "LevelChange")
-	end
-
-	-- Логируем валидацию уровня если указан playerId
-	if playerId then
-		print(
-			string.format(
-				"[VALIDATION] Level change validated for player %d: %d -> %d",
-				playerId,
-				currentLevel,
-				newLevel
-			)
-		)
-	end
-
-	return ValidationUtils.Success()
+	local result = self.ExperienceValidator:ValidateLevelChange(currentLevel, newLevel, playerId)
+	self:ProcessValidationResult(result, nil, "LevelChange", playerId)
+	return result
 end
 
 -- Валидация изменений опыта
@@ -148,49 +120,19 @@ function ValidationService:ValidateExperienceChange(
 	addedExp: number,
 	playerId: number?
 ): ValidationUtils.ValidationResult
-	-- Проверяем базовую валидность опыта
-	local currentExpResult = ValidationUtils.ValidateExperience(currentExp)
-	if not currentExpResult.IsValid then
-		return currentExpResult
-	end
+	local result = self.ExperienceValidator:ValidateExperienceChange(currentExp, addedExp, playerId)
+	self:ProcessValidationResult(result, nil, "ExperienceChange", playerId)
+	return result
+end
 
-	local addedExpResult = ValidationUtils.ValidateExperience(addedExp)
-	if not addedExpResult.IsValid then
-		return addedExpResult
-	end
-
-	-- Проверяем разумность добавляемого опыта
-	if addedExp <= 0 then
-		return ValidationUtils.Failure(
-			"Added experience must be positive",
-			"INVALID_EXPERIENCE_AMOUNT",
-			"ExperienceChange"
-		)
-	end
-
-	-- Проверяем максимальный опыт за раз (защита от читов)
-	local maxExpPerAction = 10000 -- Максимум 10k опыта за одно действие
-	if addedExp > maxExpPerAction then
-		return ValidationUtils.Failure(
-			string.format("Experience gain too large: %d (max: %d)", addedExp, maxExpPerAction),
-			"EXCESSIVE_EXPERIENCE_GAIN",
-			"ExperienceChange"
-		)
-	end
-
-	-- Логируем валидацию опыта если указан playerId
-	if playerId then
-		print(
-			string.format(
-				"[VALIDATION] Experience change validated for player %d: +%d (total: %d)",
-				playerId,
-				addedExp,
-				currentExp + addedExp
-			)
-		)
-	end
-
-	return ValidationUtils.Success()
+-- Валидация опыта для уровня
+function ValidationService:ValidateExperienceForLevel(
+	level: number,
+	currentExperience: number
+): ValidationUtils.ValidationResult
+	local result = self.ExperienceValidator:ValidateExperienceForLevel(level, currentExperience)
+	self:ProcessValidationResult(result, nil, "ExperienceForLevel")
+	return result
 end
 
 -- Валидация транзакций с золотом
@@ -200,61 +142,9 @@ function ValidationService:ValidateGoldTransaction(
 	transactionType: string,
 	playerId: number?
 ): ValidationUtils.ValidationResult
-	-- Проверяем текущее золото
-	local currentGoldResult = ValidationUtils.ValidateGold(currentGold)
-	if not currentGoldResult.IsValid then
-		return currentGoldResult
-	end
-
-	-- Проверяем новое количество золота
-	local newGold = currentGold + change
-	local newGoldResult = ValidationUtils.ValidateGold(newGold)
-	if not newGoldResult.IsValid then
-		return newGoldResult
-	end
-
-	-- Проверяем тип транзакции
-	local validTransactionTypes =
-		{ "QUEST_REWARD", "ITEM_SALE", "ITEM_PURCHASE", "TRADE", "ADMIN_GRANT", "REPAIR_COST" }
-	local typeResult = ValidationUtils.ValidateEnum(transactionType, validTransactionTypes, "TransactionType")
-	if not typeResult.IsValid then
-		return typeResult
-	end
-
-	-- Проверяем разумность изменения
-	local maxChange = 1000000 -- Максимальное изменение золота за раз
-	if math.abs(change) > maxChange then
-		return ValidationUtils.Failure(
-			string.format("Gold change too large: %d (max: %d)", math.abs(change), maxChange),
-			"EXCESSIVE_GOLD_CHANGE",
-			"GoldTransaction"
-		)
-	end
-
-	-- Проверяем, что у игрока достаточно золота для трат
-	if change < 0 and currentGold < math.abs(change) then
-		return ValidationUtils.Failure(
-			string.format("Insufficient gold: has %d, needs %d", currentGold, math.abs(change)),
-			"INSUFFICIENT_GOLD",
-			"GoldTransaction"
-		)
-	end
-
-	-- Логируем валидацию золота если указан playerId
-	if playerId then
-		print(
-			string.format(
-				"[VALIDATION] Gold transaction validated for player %d: %s %d (%d -> %d)",
-				playerId,
-				transactionType,
-				change,
-				currentGold,
-				newGold
-			)
-		)
-	end
-
-	return ValidationUtils.Success()
+	local result = self.PlayerValidator:ValidateGoldTransaction(currentGold, change, transactionType, playerId)
+	self:ProcessValidationResult(result, nil, "GoldTransaction", playerId)
+	return result
 end
 
 -- Валидация сетевых запросов
@@ -263,123 +153,51 @@ function ValidationService:ValidateNetworkRequest(
 	requestEventName: string,
 	data: any
 ): ValidationUtils.ValidationResult
-	-- Проверяем игрока
-	if not player or player.Parent ~= game:GetService("Players") then
-		return ValidationUtils.Failure("Invalid player", "INVALID_PLAYER", "NetworkRequest")
-	end
-
-	-- Проверяем имя события (переименовали параметр чтобы избежать shadowing)
-	local eventNameResult = ValidationUtils.ValidateNonEmptyString(requestEventName, "EventName")
-	if not eventNameResult.IsValid then
-		return eventNameResult
-	end
-
-	-- Проверяем, что событие существует
-	local validEvents = {}
-	for _, eventName in pairs(Constants.REMOTE_EVENTS) do
-		validEvents[eventName] = true
-	end
-
-	if not validEvents[requestEventName] then
-		return ValidationUtils.Failure(
-			string.format("Unknown event: %s", requestEventName),
-			"UNKNOWN_EVENT",
-			"NetworkRequest"
-		)
-	end
-
-	-- Проверяем размер данных
-	if data then
-		local success, dataString =
-			pcall(game:GetService("HttpService").JSONEncode, game:GetService("HttpService"), data)
-		if success then
-			local dataSize = #dataString
-			local maxDataSize = 100 * 1024 -- 100KB максимум для сетевых запросов
-
-			if dataSize > maxDataSize then
-				return ValidationUtils.Failure(
-					string.format("Request data too large: %d bytes (max: %d)", dataSize, maxDataSize),
-					"REQUEST_DATA_TOO_LARGE",
-					"NetworkRequest"
-				)
-			end
-		end
-	end
-
-	return ValidationUtils.Success()
-end
-
--- Валидация инвентаря (будущая функция)
-function ValidationService:ValidateInventoryOperation(
-	operation: string,
-	itemData: any,
-	playerId: number?
-): ValidationUtils.ValidationResult
-	-- Placeholder for inventory validation
-	-- Будет реализовано при создании системы инвентаря
-
-	local validOperations = { "ADD_ITEM", "REMOVE_ITEM", "MOVE_ITEM", "SPLIT_STACK", "MERGE_STACK" }
-	local result = ValidationUtils.ValidateEnum(operation, validOperations, "InventoryOperation")
-
-	-- Логируем для будущей реализации если указан playerId
-	if playerId and itemData then
-		print(string.format("[VALIDATION] Inventory operation validated for player %d: %s", playerId, operation))
-	end
-
+	local result = self.NetworkValidator:ValidateNetworkRequest(player, requestEventName, data)
+	self:ProcessValidationResult(result, nil, "NetworkRequest", player.UserId)
 	return result
 end
 
----[[ ИГРОВЫЕ ПРАВИЛА ]]---
+-- Валидация целостности данных
+function ValidationService:ValidateDataIntegrity(data: any): ValidationUtils.ValidationResult
+	local result = self.PlayerValidator:ValidateDataIntegrity(data)
+	self:ProcessValidationResult(result, nil, "DataIntegrity")
+	return result
+end
 
--- Проверка специфичных для игры правил
-function ValidationService:ValidateGameSpecificRules(data: any, playerId: number?): ValidationUtils.ValidationResult
-	-- Проверяем соответствие уровня и опыта
-	if data.Level and data.Experience then
-		local calculatedLevel = self:CalculateLevelFromTotalExperience(data.Experience, data.Level)
-		if calculatedLevel ~= data.Level then
-			return ValidationUtils.Failure(
-				string.format(
-					"Level %d doesn't match experience %d (should be %d)",
-					data.Level,
-					data.Experience,
-					calculatedLevel
-				),
-				"LEVEL_EXPERIENCE_MISMATCH",
-				"GameRules"
-			)
-		end
+-- Валидация для админских действий
+function ValidationService:ValidateAdminAction(
+	adminPlayer: Player,
+	action: string,
+	targetPlayer: Player?,
+	data: any?
+): ValidationUtils.ValidationResult
+	local result = self.NetworkValidator:ValidateAdminAction(adminPlayer, action, targetPlayer, data)
+	self:ProcessValidationResult(result, nil, "AdminAction", adminPlayer.UserId)
+	return result
+end
+
+---[[ СЛУЖЕБНЫЕ МЕТОДЫ ]]---
+
+-- Обработка результата валидации (кэш + статистика + логирование)
+function ValidationService:ProcessValidationResult(
+	result: ValidationUtils.ValidationResult,
+	cacheKey: string?,
+	validationType: string,
+	playerId: number?
+)
+	-- Сохраняем в кэш
+	if self.Settings.EnableCaching and cacheKey then
+		self:SaveToCache(cacheKey, result)
 	end
 
-	-- Проверяем соответствие характеристик и ресурсов
-	if data.Attributes and data.Health then
-		local maxHealth = Constants.PLAYER.BASE_HEALTH
-			+ (data.Attributes.Constitution * Constants.PLAYER.HEALTH_PER_CONSTITUTION)
-		if data.Health > maxHealth then
-			return ValidationUtils.Failure(
-				string.format("Health %d exceeds maximum %d", data.Health, maxHealth),
-				"HEALTH_EXCEEDS_MAXIMUM",
-				"GameRules"
-			)
-		end
+	-- Обновляем статистику
+	self:UpdateValidationStats(result)
+
+	-- Логируем при необходимости
+	if not result.IsValid and self.Settings.LogFailedValidations then
+		self:LogValidationFailure(validationType, result, playerId)
 	end
-
-	-- Проверяем разумность статистики
-	if data.Statistics then
-		if data.Statistics.TotalPlayTime and data.Statistics.TotalPlayTime < 0 then
-			return ValidationUtils.Failure("Play time cannot be negative", "NEGATIVE_PLAY_TIME", "GameRules")
-		end
-
-		if data.Statistics.MobsKilled and data.Statistics.MobsKilled < 0 then
-			return ValidationUtils.Failure("Mobs killed cannot be negative", "NEGATIVE_MOBS_KILLED", "GameRules")
-		end
-	end
-
-	-- Логируем успешную валидацию игровых правил если указан playerId
-	if playerId then
-		print(string.format("[VALIDATION] Game rules validated for player %d", playerId))
-	end
-
-	return ValidationUtils.Success()
 end
 
 ---[[ КЭШИРОВАНИЕ ]]---
@@ -511,148 +329,6 @@ function ValidationService:ResetStatistics()
 	}
 
 	print("[VALIDATION SERVICE] Statistics reset")
-end
-
----[[ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ]]---
-
--- Расчет уровня из общего опыта (для проверки соответствия)
-function ValidationService:CalculateLevelFromTotalExperience(totalExperience: number, currentLevel: number): number
-	-- Проверяем, соответствует ли текущий уровень опыту
-	local expForCurrentLevel = 0
-	for level = 1, currentLevel - 1 do
-		expForCurrentLevel = expForCurrentLevel
-			+ math.floor(Constants.EXPERIENCE.BASE_XP_REQUIRED * (level ^ Constants.EXPERIENCE.XP_MULTIPLIER))
-	end
-
-	local expForNextLevel = expForCurrentLevel
-		+ math.floor(Constants.EXPERIENCE.BASE_XP_REQUIRED * (currentLevel ^ Constants.EXPERIENCE.XP_MULTIPLIER))
-
-	-- Если опыт находится в правильном диапазоне, уровень корректный
-	if totalExperience >= expForCurrentLevel and totalExperience < expForNextLevel then
-		return currentLevel
-	end
-
-	-- Иначе пересчитываем уровень с самого начала
-	local level = 1
-	local currentExp = totalExperience
-
-	while level < Constants.PLAYER.MAX_LEVEL do
-		local expRequired =
-			math.floor(Constants.EXPERIENCE.BASE_XP_REQUIRED * (level ^ Constants.EXPERIENCE.XP_MULTIPLIER))
-		if currentExp < expRequired then
-			break
-		end
-		currentExp = currentExp - expRequired
-		level = level + 1
-	end
-
-	return level
-end
-
--- Проверка целостности данных игрока
-function ValidationService:ValidateDataIntegrity(data: any): ValidationUtils.ValidationResult
-	-- Проверяем наличие обязательных полей
-	local requiredFields = { "Level", "Experience", "Attributes", "Currency", "Statistics" }
-
-	for _, field in ipairs(requiredFields) do
-		if data[field] == nil then
-			return ValidationUtils.Failure(
-				string.format("Missing required field: %s", field),
-				"MISSING_REQUIRED_FIELD",
-				field
-			)
-		end
-	end
-
-	-- Проверяем типы данных
-	if type(data.Level) ~= "number" then
-		return ValidationUtils.Failure("Level must be a number", "INVALID_LEVEL_TYPE", "Level")
-	end
-
-	if type(data.Experience) ~= "number" then
-		return ValidationUtils.Failure("Experience must be a number", "INVALID_EXPERIENCE_TYPE", "Experience")
-	end
-
-	if type(data.Attributes) ~= "table" then
-		return ValidationUtils.Failure("Attributes must be a table", "INVALID_ATTRIBUTES_TYPE", "Attributes")
-	end
-
-	if type(data.Currency) ~= "table" then
-		return ValidationUtils.Failure("Currency must be a table", "INVALID_CURRENCY_TYPE", "Currency")
-	end
-
-	if type(data.Statistics) ~= "table" then
-		return ValidationUtils.Failure("Statistics must be a table", "INVALID_STATISTICS_TYPE", "Statistics")
-	end
-
-	return ValidationUtils.Success()
-end
-
--- Валидация для админских действий
-function ValidationService:ValidateAdminAction(
-	adminPlayer: Player,
-	action: string,
-	targetPlayer: Player?,
-	data: any?
-): ValidationUtils.ValidationResult
-	-- Проверяем права администратора (placeholder)
-	-- В реальной игре здесь была бы проверка admin уровня
-
-	local validAdminActions =
-		{ "GRANT_EXP", "GRANT_GOLD", "SET_LEVEL", "HEAL_PLAYER", "TELEPORT_PLAYER", "BAN_PLAYER", "KICK_PLAYER" }
-	local actionResult = ValidationUtils.ValidateEnum(action, validAdminActions, "AdminAction")
-	if not actionResult.IsValid then
-		return actionResult
-	end
-
-	-- Проверяем целевого игрока для действий, которые его требуют
-	local actionsRequiringTarget =
-		{ "GRANT_EXP", "GRANT_GOLD", "SET_LEVEL", "HEAL_PLAYER", "TELEPORT_PLAYER", "BAN_PLAYER", "KICK_PLAYER" }
-	if table.find(actionsRequiringTarget, action) and not targetPlayer then
-		return ValidationUtils.Failure(
-			string.format("Action %s requires a target player", action),
-			"MISSING_TARGET_PLAYER",
-			"AdminAction"
-		)
-	end
-
-	-- Проверяем данные для действий, которые их требуют
-	local actionsRequiringData = { "GRANT_EXP", "GRANT_GOLD", "SET_LEVEL" }
-	if table.find(actionsRequiringData, action) then
-		if not data then
-			return ValidationUtils.Failure(
-				string.format("Action %s requires data", action),
-				"MISSING_ACTION_DATA",
-				"AdminAction"
-			)
-		end
-
-		-- Специфичная валидация по типу действия
-		if action == "GRANT_EXP" or action == "GRANT_GOLD" then
-			local amountResult = ValidationUtils.ValidateType(data, "number", "Amount")
-			if not amountResult.IsValid then
-				return amountResult
-			end
-
-			if data <= 0 or data > 1000000 then
-				return ValidationUtils.Failure(
-					"Amount must be between 1 and 1,000,000",
-					"INVALID_AMOUNT_RANGE",
-					"Amount"
-				)
-			end
-		elseif action == "SET_LEVEL" then
-			local levelResult = ValidationUtils.ValidatePlayerLevel(data)
-			if not levelResult.IsValid then
-				return levelResult
-			end
-		end
-	end
-
-	-- Логируем админское действие
-	print(string.format("[VALIDATION] Admin action validated: %s by %s", action, adminPlayer.Name))
-
-	return ValidationUtils.Success()
 end
 
 ---[[ НАСТРОЙКИ И КОНФИГУРАЦИЯ ]]---
