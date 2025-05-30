@@ -8,82 +8,15 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local BaseService = require(ReplicatedStorage.Shared.BaseService)
 local Constants = require(ReplicatedStorage.Shared.constants.Constants)
+local ValidationUtils = require(ReplicatedStorage.Shared.utils.ValidationUtils)
+local PlayerTypes = require(ReplicatedStorage.Shared.types.PlayerTypes)
 local ProfileService = require(ServerScriptService.ServerPackages.ProfileService)
 
 local PlayerDataService = setmetatable({}, { __index = BaseService })
 PlayerDataService.__index = PlayerDataService
 
--- Профиль по умолчанию
-local DefaultProfile = {
-	-- Основная информация
-	Level = Constants.PLAYER.START_LEVEL,
-	Experience = Constants.PLAYER.START_EXPERIENCE,
-
-	-- Характеристики
-	Attributes = {
-		Strength = Constants.PLAYER.BASE_ATTRIBUTES.Strength,
-		Dexterity = Constants.PLAYER.BASE_ATTRIBUTES.Dexterity,
-		Intelligence = Constants.PLAYER.BASE_ATTRIBUTES.Intelligence,
-		Constitution = Constants.PLAYER.BASE_ATTRIBUTES.Constitution,
-		Focus = Constants.PLAYER.BASE_ATTRIBUTES.Focus,
-	},
-
-	-- Доступные очки характеристик
-	AttributePoints = 0,
-
-	-- Ресурсы
-	Health = Constants.PLAYER.BASE_HEALTH,
-	Mana = Constants.PLAYER.BASE_MANA,
-	Stamina = Constants.PLAYER.BASE_STAMINA,
-
-	-- Инвентарь
-	Inventory = {},
-	Equipment = {
-		MainHand = nil,
-		OffHand = nil,
-		Helmet = nil,
-		Chest = nil,
-		Legs = nil,
-		Boots = nil,
-		Ring1 = nil,
-		Ring2 = nil,
-		Amulet = nil,
-	},
-
-	-- Валюта
-	Currency = {
-		Gold = Constants.PLAYER.START_GOLD,
-	},
-
-	-- Статистика
-	Statistics = {
-		TotalPlayTime = 0,
-		MobsKilled = 0,
-		QuestsCompleted = 0,
-		ItemsCrafted = 0,
-		Deaths = 0,
-	},
-
-	-- Мастерство оружия
-	WeaponMastery = {
-		Sword = { Level = 1, Experience = 0 },
-		Axe = { Level = 1, Experience = 0 },
-		Bow = { Level = 1, Experience = 0 },
-		Staff = { Level = 1, Experience = 0 },
-		Spear = { Level = 1, Experience = 0 },
-	},
-
-	-- Настройки
-	Settings = {
-		MusicVolume = 0.5,
-		SFXVolume = 0.7,
-		ShowDamageNumbers = true,
-		AutoPickupItems = true,
-	},
-
-	-- Дата последнего входа
-	LastLogin = os.time(),
-}
+-- Используем типизированный профиль по умолчанию
+local DefaultProfile = PlayerTypes.CreateDefaultProfile()
 
 function PlayerDataService.new()
 	local self = setmetatable(BaseService.new("PlayerDataService"), PlayerDataService)
@@ -151,6 +84,28 @@ function PlayerDataService:LoadPlayerData(player)
 	if profile ~= nil then
 		profile:AddUserId(player.UserId) -- Соответствие GDPR
 		profile:Reconcile() -- Добавляет недостающие поля из DefaultProfile
+
+		-- НОВОЕ: Валидация загруженных данных
+		local ServiceManager = require(script.Parent.Parent.ServiceManager)
+		local ValidationService = ServiceManager:GetService("ValidationService")
+
+		if ValidationService then
+			local validationResult = ValidationService:ValidatePlayerData(profile.Data, player.UserId)
+			if not validationResult.IsValid then
+				warn(string.format("[PLAYER DATA] Invalid data for %s: %s", player.Name, validationResult.ErrorMessage))
+
+				-- Сбрасываем на дефолтный профиль при критических ошибках
+				if
+					validationResult.ErrorCode == "MISSING_REQUIRED_FIELD"
+					or validationResult.ErrorCode == "INVALID_TYPE"
+				then
+					warn("[PLAYER DATA] Resetting to default profile due to critical data corruption")
+					profile.Data = PlayerTypes.CreateDefaultProfile()
+				end
+			else
+				print("[PLAYER DATA] Data validation passed for " .. player.Name)
+			end
+		end
 
 		profile:ListenToRelease(function()
 			self.Profiles[player] = nil
@@ -280,11 +235,44 @@ function PlayerDataService:AddExperience(player, amount)
 		return
 	end
 
+	-- НОВОЕ: Валидация изменения опыта
+	local ServiceManager = require(script.Parent.Parent.ServiceManager)
+	local ValidationService = ServiceManager:GetService("ValidationService")
+
+	if ValidationService then
+		local validationResult = ValidationService:ValidateExperienceChange(data.Experience, amount, player.UserId)
+		if not validationResult.IsValid then
+			warn(
+				string.format(
+					"[PLAYER DATA] Invalid experience change for %s: %s",
+					player.Name,
+					validationResult.ErrorMessage
+				)
+			)
+			return
+		end
+	end
+
 	data.Experience = data.Experience + amount
 
 	-- Проверяем повышение уровня
 	local requiredXP = self:GetRequiredExperience(data.Level)
 	while data.Experience >= requiredXP and data.Level < Constants.PLAYER.MAX_LEVEL do
+		-- НОВОЕ: Валидация изменения уровня
+		if ValidationService then
+			local levelValidation = ValidationService:ValidateLevelChange(data.Level, data.Level + 1, player.UserId)
+			if not levelValidation.IsValid then
+				warn(
+					string.format(
+						"[PLAYER DATA] Invalid level change for %s: %s",
+						player.Name,
+						levelValidation.ErrorMessage
+					)
+				)
+				break
+			end
+		end
+
 		data.Experience = data.Experience - requiredXP
 		data.Level = data.Level + 1
 		data.AttributePoints = data.AttributePoints + 5 -- 5 очков за уровень
@@ -304,11 +292,117 @@ function PlayerDataService:AddExperience(player, amount)
 		Level = data.Level,
 		RequiredXP = requiredXP,
 	})
+
+	print(string.format("[PLAYER DATA] %s gained %d experience (total: %d)", player.Name, amount, data.Experience))
 end
 
 -- Рассчитать необходимый опыт для уровня
 function PlayerDataService:GetRequiredExperience(level)
 	return math.floor(Constants.EXPERIENCE.BASE_XP_REQUIRED * (level ^ Constants.EXPERIENCE.XP_MULTIPLIER))
+end
+
+-- Новый метод для валидации транзакций золота:
+function PlayerDataService:AddGold(player, amount, transactionType)
+	local data = self:GetData(player)
+	if not data then
+		return false
+	end
+
+	transactionType = transactionType or "UNKNOWN"
+
+	-- Валидация транзакции золота
+	local ServiceManager = require(script.Parent.Parent.ServiceManager)
+	local ValidationService = ServiceManager:GetService("ValidationService")
+
+	if ValidationService then
+		local validationResult =
+			ValidationService:ValidateGoldTransaction(data.Currency.Gold, amount, transactionType, player.UserId)
+
+		if not validationResult.IsValid then
+			warn(
+				string.format(
+					"[PLAYER DATA] Invalid gold transaction for %s: %s",
+					player.Name,
+					validationResult.ErrorMessage
+				)
+			)
+			return false
+		end
+	end
+
+	local oldGold = data.Currency.Gold
+	data.Currency.Gold = data.Currency.Gold + amount
+
+	-- Уведомляем клиент об изменении данных
+	self:FireClient(player, Constants.REMOTE_EVENTS.PLAYER_DATA_LOADED, data)
+
+	print(
+		string.format(
+			"[PLAYER DATA] %s %s %d gold (%d -> %d)",
+			player.Name,
+			amount > 0 and "gained" or "spent",
+			math.abs(amount),
+			oldGold,
+			data.Currency.Gold
+		)
+	)
+
+	return true
+end
+
+-- Новый метод для изменения характеристик с валидацией:
+function PlayerDataService:ModifyAttributes(player, attributeChanges)
+	local data = self:GetData(player)
+	if not data then
+		return false
+	end
+
+	-- Создаем копию атрибутов для проверки
+	local newAttributes = {}
+	for attr, value in pairs(data.Attributes) do
+		newAttributes[attr] = value + (attributeChanges[attr] or 0)
+	end
+
+	-- Валидация новых атрибутов
+	local ServiceManager = require(script.Parent.Parent.ServiceManager)
+	local ValidationService = ServiceManager:GetService("ValidationService")
+
+	if ValidationService then
+		local validationResult = ValidationUtils.ValidatePlayerAttributes(newAttributes)
+		if not validationResult.IsValid then
+			warn(
+				string.format(
+					"[PLAYER DATA] Invalid attribute change for %s: %s",
+					player.Name,
+					validationResult.ErrorMessage
+				)
+			)
+			return false
+		end
+	end
+
+	-- Применяем изменения
+	local totalPointsUsed = 0
+	for attr, change in pairs(attributeChanges) do
+		if data.Attributes[attr] then
+			data.Attributes[attr] = data.Attributes[attr] + change
+			totalPointsUsed = totalPointsUsed + math.abs(change)
+		end
+	end
+
+	-- Списываем очки атрибутов
+	if totalPointsUsed > 0 then
+		data.AttributePoints = math.max(0, data.AttributePoints - totalPointsUsed)
+	end
+
+	-- Пересчитываем ресурсы
+	self:InitializePlayerResources(player)
+
+	-- Уведомляем клиент
+	self:FireClient(player, Constants.REMOTE_EVENTS.PLAYER_DATA_LOADED, data)
+
+	print(string.format("[PLAYER DATA] %s modified attributes, used %d points", player.Name, totalPointsUsed))
+	return true
 end
 
 -- Вывести информацию о данных игрока

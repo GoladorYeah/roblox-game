@@ -27,7 +27,13 @@ end
 local function registerServices()
 	print("[MAIN] Registering services...")
 
-	-- Регистрируем RemoteService первым (нужен для других сервисов)
+	-- Регистрируем ValidationService первым (нужен для других сервисов)
+	local ValidationService = safeRequire(ServerScriptService.Server.services.ValidationService, "ValidationService")
+	if ValidationService then
+		ServiceManager:RegisterService(ValidationService)
+	end
+
+	-- Регистрируем RemoteService вторым (нужен для других сервисов)
 	local RemoteService = safeRequire(ServerScriptService.Server.services.RemoteService, "RemoteService")
 	if RemoteService then
 		ServiceManager:RegisterService(RemoteService)

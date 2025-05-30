@@ -22,7 +22,7 @@ end
 
 function DebugService:OnInitialize()
 	-- Регистрируем базовые команды
-	self:RegisterCommand("help", "Показать все команды", function(player, args)
+	self:RegisterCommand("help", "Показать все команды", function(player, _)
 		self:ShowHelp(player)
 	end)
 
@@ -49,12 +49,26 @@ function DebugService:OnInitialize()
 		end
 	)
 
-	self:RegisterCommand("stats", "Показать статистику игрока", function(player, args)
+	self:RegisterCommand("stats", "Показать статистику игрока", function(player, _)
 		self:ShowStats(player)
 	end)
 
-	self:RegisterCommand("heal", "Восстановить здоровье", function(player, args)
+	self:RegisterCommand("heal", "Восстановить здоровье", function(player, _)
 		self:HealPlayer(player)
+	end)
+
+	-- НОВЫЕ КОМАНДЫ ДЛЯ ВАЛИДАЦИИ
+	self:RegisterCommand("valstats", "Статистика валидации", function(player, _)
+		self:ShowValidationStats(player)
+	end)
+
+	self:RegisterCommand("testval", "Тест валидации: /testval [тип]", function(player, args)
+		local testType = args[1] or "player"
+		self:TestValidation(player, testType)
+	end)
+
+	self:RegisterCommand("resetval", "Сброс статистики валидации", function(player, _)
+		self:ResetValidationStats(player)
 	end)
 end
 
@@ -203,14 +217,11 @@ function DebugService:AddGold(player, amount)
 		return
 	end
 
-	local data = PlayerDataService:GetData(player)
-	if data ~= nil then
-		data.Currency.Gold = data.Currency.Gold + amount
-
-		-- Отправляем обновленные данные клиенту
-		PlayerDataService:FireClient(player, Constants.REMOTE_EVENTS.PLAYER_DATA_LOADED, data)
-
-		self:SendMessage(player, "Добавлено " .. amount .. " золота! Всего: " .. data.Currency.Gold)
+	local success = PlayerDataService:AddGold(player, amount, "ADMIN_GRANT")
+	if success then
+		self:SendMessage(player, "Добавлено " .. amount .. " золота!")
+	else
+		self:SendMessage(player, "Ошибка при добавлении золота!")
 	end
 end
 
@@ -258,6 +269,198 @@ function DebugService:HealPlayer(player)
 
 		self:SendMessage(player, "Здоровье восстановлено!")
 	end
+end
+
+-- НОВЫЕ МЕТОДЫ ДЛЯ ВАЛИДАЦИИ
+
+-- Показать статистику валидации
+function DebugService:ShowValidationStats(player)
+	local ServiceManager = require(script.Parent.Parent.ServiceManager)
+	local ValidationService = ServiceManager:GetService("ValidationService")
+
+	if not ValidationService then
+		self:SendMessage(player, "ValidationService недоступен!")
+		return
+	end
+
+	local stats = ValidationService:GetValidationStatistics()
+
+	self:SendMessage(player, "=== СТАТИСТИКА ВАЛИДАЦИИ ===")
+	self:SendMessage(player, string.format("Общих проверок: %d", stats.TotalValidations))
+	self:SendMessage(player, string.format("Успешных: %d", stats.PassedValidations))
+	self:SendMessage(player, string.format("Неудачных: %d", stats.FailedValidations))
+	self:SendMessage(player, string.format("Успешность: %.2f%%", stats.SuccessRate))
+	self:SendMessage(
+		player,
+		string.format("Попаданий в кэш: %d (%.2f%%)", stats.CacheHits, stats.CacheHitRate)
+	)
+	self:SendMessage(player, string.format("Время работы: %.2f часов", stats.UptimeHours))
+
+	-- Показываем самые частые ошибки
+	if next(stats.MostCommonErrors) then
+		self:SendMessage(player, "Частые ошибки:")
+		for errorCode, count in pairs(stats.MostCommonErrors) do
+			self:SendMessage(player, string.format("  %s: %d раз", errorCode, count))
+		end
+	end
+end
+
+-- Тестирование валидации
+function DebugService:TestValidation(player, testType)
+	local ServiceManager = require(script.Parent.Parent.ServiceManager)
+	local ValidationService = ServiceManager:GetService("ValidationService")
+	local PlayerDataService = ServiceManager:GetService("PlayerDataService")
+
+	if not ValidationService then
+		self:SendMessage(player, "ValidationService недоступен!")
+		return
+	end
+
+	self:SendMessage(player, "Запуск тестов валидации...")
+
+	if testType == "player" then
+		-- Тест валидации данных игрока
+		local data = PlayerDataService:GetData(player)
+		if data then
+			local result = ValidationService:ValidatePlayerData(data, player.UserId)
+			if result.IsValid then
+				self:SendMessage(player, "✅ Данные игрока прошли валидацию")
+			else
+				self:SendMessage(player, "❌ Ошибка валидации: " .. (result.ErrorMessage or "Unknown"))
+			end
+		else
+			self:SendMessage(player, "❌ Данные игрока не загружены")
+		end
+	elseif testType == "exp" then
+		-- Тест валидации опыта
+		local result = ValidationService:ValidateExperienceChange(100, 50, player.UserId)
+		if result.IsValid then
+			self:SendMessage(player, "✅ Валидация опыта пройдена")
+		else
+			self:SendMessage(
+				player,
+				"❌ Ошибка валидации опыта: " .. (result.ErrorMessage or "Unknown")
+			)
+		end
+
+		-- Тест недопустимого опыта
+		local badResult = ValidationService:ValidateExperienceChange(100, 100000, player.UserId)
+		if not badResult.IsValid then
+			self:SendMessage(player, "✅ Большой опыт корректно отклонен")
+		else
+			self:SendMessage(player, "❌ Большой опыт не был отклонен!")
+		end
+	elseif testType == "gold" then
+		-- Тест валидации золота
+		local result = ValidationService:ValidateGoldTransaction(1000, -500, "ITEM_PURCHASE", player.UserId)
+		if result.IsValid then
+			self:SendMessage(player, "✅ Валидация золота пройдена")
+		else
+			self:SendMessage(
+				player,
+				"❌ Ошибка валидации золота: " .. (result.ErrorMessage or "Unknown")
+			)
+		end
+
+		-- Тест недостатка золота
+		local poorResult = ValidationService:ValidateGoldTransaction(100, -500, "ITEM_PURCHASE", player.UserId)
+		if not poorResult.IsValid then
+			self:SendMessage(player, "✅ Недостаток золота корректно отклонен")
+		else
+			self:SendMessage(player, "❌ Недостаток золота не был отклонен!")
+		end
+	elseif testType == "stress" then
+		-- Стресс-тест валидации
+		self:SendMessage(player, "Запуск стресс-теста (1000 валидаций)...")
+
+		local startTime = tick()
+		local passedTests = 0
+
+		for _ = 1, 1000 do
+			local testData = {
+				Level = math.random(1, 100),
+				Experience = math.random(0, 1000000),
+				Attributes = {
+					Strength = math.random(10, 100),
+					Dexterity = math.random(10, 100),
+					Intelligence = math.random(10, 100),
+					Constitution = math.random(10, 100),
+					Focus = math.random(10, 100),
+				},
+				Currency = { Gold = math.random(0, 100000) },
+				Statistics = {
+					TotalPlayTime = math.random(0, 86400),
+					MobsKilled = math.random(0, 1000),
+					QuestsCompleted = math.random(0, 100),
+					ItemsCrafted = math.random(0, 500),
+					Deaths = math.random(0, 50),
+					DamageDealt = 0,
+					DamageTaken = 0,
+					DistanceTraveled = 0,
+				},
+				Equipment = {
+					MainHand = nil,
+					OffHand = nil,
+					Helmet = nil,
+					Chest = nil,
+					Legs = nil,
+					Boots = nil,
+					Ring1 = nil,
+					Ring2 = nil,
+					Amulet = nil,
+				},
+				Inventory = {},
+				WeaponMastery = {
+					Sword = { Level = 1, Experience = 0 },
+					Axe = { Level = 1, Experience = 0 },
+					Bow = { Level = 1, Experience = 0 },
+					Staff = { Level = 1, Experience = 0 },
+					Spear = { Level = 1, Experience = 0 },
+				},
+				Settings = {
+					MusicVolume = 0.5,
+					SFXVolume = 0.7,
+					ShowDamageNumbers = true,
+					AutoPickupItems = true,
+					ChatFilter = true,
+					ShowPlayerNames = true,
+				},
+				AttributePoints = 0,
+				Health = math.random(50, 200),
+				Mana = math.random(20, 100),
+				Stamina = math.random(50, 150),
+				LastLogin = os.time(),
+			}
+
+			local result = ValidationService:ValidatePlayerData(testData, player.UserId)
+			if result.IsValid then
+				passedTests = passedTests + 1
+			end
+		end
+
+		local endTime = tick()
+		local duration = (endTime - startTime) * 1000
+
+		self:SendMessage(player, string.format("Стресс-тест завершен за %.2f мс", duration))
+		self:SendMessage(player, string.format("Прошло: %d/1000 тестов", passedTests))
+		self:SendMessage(player, string.format("Среднее время: %.3f мс/тест", duration / 1000))
+	else
+		self:SendMessage(player, "Доступные типы тестов: player, exp, gold, stress")
+	end
+end
+
+-- Сброс статистики валидации
+function DebugService:ResetValidationStats(player)
+	local ServiceManager = require(script.Parent.Parent.ServiceManager)
+	local ValidationService = ServiceManager:GetService("ValidationService")
+
+	if not ValidationService then
+		self:SendMessage(player, "ValidationService недоступен!")
+		return
+	end
+
+	ValidationService:ResetStatistics()
+	self:SendMessage(player, "Статистика валидации сброшена!")
 end
 
 -- Отправить сообщение игроку
