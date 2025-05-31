@@ -19,6 +19,11 @@
     },
 
     "StarterPlayer": {
+      "$properties": {
+        "LoadCharacterAppearance": true,
+        "CharacterWalkSpeed": 16,
+        "CharacterJumpPower": 50
+      },
       "StarterPlayerScripts": {
         "Client": {
           "$path": "src/client"
@@ -27,48 +32,101 @@
     },
 
     "Workspace": {
+      "$className": "Workspace",
       "$properties": {
-        "FilteringEnabled": true
+        "FilteringEnabled": true,
+        "StreamingEnabled": true,
+        "StreamingMinRadius": 25
       },
       "Baseplate": {
         "$className": "Part",
         "$properties": {
           "Anchored": true,
-          "Color": [
-            0.38823,
-            0.37254,
-            0.38823
-          ],
+          "Color": [0.38823, 0.37254, 0.38823],
           "Locked": true,
-          "Position": [
-            0,
-            -10,
-            0
-          ],
-          "Size": [
-            512,
-            20,
-            512
-          ]
+          "Position": [0, -10, 0],
+          "Size": [512, 20, 512],
+          "Material": "Grass"
+        }
+      },
+      "SpawnLocations": {
+        "$className": "Folder",
+        "MainSpawn": {
+          "$className": "SpawnLocation",
+          "$properties": {
+            "Position": [0, 5, 0],
+            "Size": [6, 1, 6],
+            "Anchored": true,
+            "Material": "Neon",
+            "CanCollide": false
+          }
+        },
+        "NorthSpawn": {
+          "$className": "SpawnLocation",
+          "$properties": {
+            "Position": [0, 5, -50],
+            "Size": [6, 1, 6],
+            "Anchored": true,
+            "Material": "Neon",
+            "CanCollide": false
+          }
+        },
+        "SouthSpawn": {
+          "$className": "SpawnLocation",
+          "$properties": {
+            "Position": [0, 5, 50],
+            "Size": [6, 1, 6],
+            "Anchored": true,
+            "Material": "Neon",
+            "CanCollide": false
+          }
         }
       }
     },
+
     "Lighting": {
       "$properties": {
-        "Ambient": [
-          0,
-          0,
-          0
-        ],
+        "Ambient": [0.2, 0.2, 0.3],
         "Brightness": 2,
+        "ColorShift_Bottom": [0, 0, 0],
+        "ColorShift_Top": [0, 0, 0],
+        "EnvironmentDiffuseScale": 0.5,
+        "EnvironmentSpecularScale": 0.5,
         "GlobalShadows": true,
         "Outlines": false,
-        "Technology": "Voxel"
+        "Technology": "ShadowMap",
+        "ClockTime": 12,
+        "GeographicLatitude": 45,
+        "TimeOfDay": "12:00:00"
+      },
+      "Sky": {
+        "$className": "Sky",
+        "$properties": {
+          "SkyboxBk": "rbxasset://textures/sky/sky512_bk.tex",
+          "SkyboxDn": "rbxasset://textures/sky/sky512_dn.tex",
+          "SkyboxFt": "rbxasset://textures/sky/sky512_ft.tex",
+          "SkyboxLf": "rbxasset://textures/sky/sky512_lf.tex",
+          "SkyboxRt": "rbxasset://textures/sky/sky512_rt.tex",
+          "SkyboxUp": "rbxasset://textures/sky/sky512_up.tex"
+        }
+      },
+      "Atmosphere": {
+        "$className": "Atmosphere",
+        "$properties": {
+          "Density": 0.3,
+          "Offset": 0.25,
+          "Color": [0.8, 0.8, 0.9],
+          "Decay": [0.4, 0.4, 0.5],
+          "Glare": 0.2,
+          "Haze": 1.8
+        }
       }
     },
+
     "SoundService": {
       "$properties": {
-        "RespectFilteringEnabled": true
+        "RespectFilteringEnabled": true,
+        "AmbientReverb": "Forest"
       }
     }
   }

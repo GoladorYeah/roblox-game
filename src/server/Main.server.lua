@@ -39,6 +39,12 @@ local function registerServices()
 		ServiceManager:RegisterService(RemoteService)
 	end
 
+	-- Регистрируем WorldService третьим (управление миром)
+	local WorldService = safeRequire(ServerScriptService.Server.services.WorldService, "WorldService")
+	if WorldService then
+		ServiceManager:RegisterService(WorldService)
+	end
+
 	-- Пробуем ProfileService, если не работает - используем SimpleDataService
 	local PlayerDataService = safeRequire(ServerScriptService.Server.services.PlayerDataService, "PlayerDataService")
 	if not PlayerDataService then
@@ -81,6 +87,10 @@ local function main()
 	end
 
 	print("=== Server Started Successfully! ===")
+	print("[MAIN] 🌍 World systems initialized")
+	print("[MAIN] 🕐 Day/Night cycle started")
+	print("[MAIN] 📡 Network systems ready")
+	print("[MAIN] 👥 Player systems ready")
 end
 
 -- Обработка ошибок при запуске
@@ -105,6 +115,14 @@ spawn(function()
 			end
 		end
 
-		print("[HEARTBEAT] Services: " .. readyServices .. "/" .. totalServices .. " ready")
+		-- Получаем информацию о времени мира
+		local worldService = ServiceManager:GetService("WorldService")
+		local timeInfo = ""
+		if worldService then
+			local info = worldService:GetTimeInfo()
+			timeInfo = string.format(" | World: %s (%s)", worldService:GetFormattedTime(), info.TimeOfDay)
+		end
+
+		print("[HEARTBEAT] Services: " .. readyServices .. "/" .. totalServices .. " ready" .. timeInfo)
 	end
 end)

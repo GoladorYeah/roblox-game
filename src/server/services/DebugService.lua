@@ -12,6 +12,7 @@ local PlayerCommands = require(script.Parent.debug.PlayerCommands)
 local ExperienceCommands = require(script.Parent.debug.ExperienceCommands)
 local ValidationCommands = require(script.Parent.debug.ValidationCommands)
 local SystemCommands = require(script.Parent.debug.SystemCommands)
+local WorldCommands = require(script.Parent.debug.WorldCommands)
 
 local DebugService = setmetatable({}, { __index = BaseService })
 DebugService.__index = DebugService
@@ -27,6 +28,7 @@ function DebugService.new()
 	self.ExperienceCommands = ExperienceCommands.new(self)
 	self.ValidationCommands = ValidationCommands.new(self)
 	self.SystemCommands = SystemCommands.new(self)
+	self.WorldCommands = WorldCommands.new(self)
 
 	return self
 end
@@ -42,8 +44,9 @@ function DebugService:OnInitialize()
 	self.ExperienceCommands:RegisterCommands()
 	self.ValidationCommands:RegisterCommands()
 	self.SystemCommands:RegisterCommands()
+	self.WorldCommands:RegisterCommands()
 
-	print("[DEBUG SERVICE] All command modules registered")
+	print("[DEBUG SERVICE] All command modules registered (including WorldCommands)")
 end
 
 function DebugService:OnStart()
@@ -148,6 +151,18 @@ function DebugService:ShowHelp(player)
 	local categories = {
 		["Игрок"] = { "stats", "heal", "addgold" },
 		["Опыт"] = { "addxp", "setexp", "settotalexp", "setlevel", "xpdiag", "fixexp", "xpcalc", "simulate" },
+		["Мир"] = {
+			"time",
+			"settime",
+			"day",
+			"night",
+			"dawn",
+			"dusk",
+			"timespeed",
+			"pausetime",
+			"fasttime",
+			"worldinfo",
+		},
 		["Валидация"] = { "valstats", "testval", "resetval" },
 		["Система"] = { "perf", "help" },
 	}

@@ -178,6 +178,11 @@ Constants.REMOTE_EVENTS = {
 	-- Чат
 	CHAT_MESSAGE = "ChatMessage",
 	SYSTEM_MESSAGE = "SystemMessage",
+
+	-- Мир
+	WORLD_TIME_CHANGED = "WorldTimeChanged",
+	DAY_STARTED = "DayStarted",
+	NIGHT_STARTED = "NightStarted",
 }
 
 -- Настройки мира
@@ -185,14 +190,114 @@ Constants.WORLD = {
 	-- Streaming
 	STREAMING_TARGET_RADIUS = 256,
 	STREAMING_MAX_RADIUS = 512,
+	STREAMING_MIN_RADIUS = 64,
 
-	-- День/ночь
-	DAY_LENGTH = 1200, -- секунд (20 минут)
-	NIGHT_LENGTH = 600, -- секунд (10 минут)
+	-- День/ночь (в секундах)
+	DAY_LENGTH = 1200, -- 20 минут
+	NIGHT_LENGTH = 600, -- 10 минут
+	DAWN_LENGTH = 120, -- 2 минуты
+	DUSK_LENGTH = 120, -- 2 минуты
+
+	-- Времена суток (в часах игрового времени)
+	TIME_PERIODS = {
+		DAWN_START = 6,
+		DAWN_END = 7,
+		DAY_START = 7,
+		DAY_END = 19,
+		DUSK_START = 19,
+		DUSK_END = 20,
+		NIGHT_START = 20,
+		NIGHT_END = 6,
+	},
+
+	-- Скорость времени (по умолчанию)
+	DEFAULT_TIME_SPEED = 1, -- 1 = реальное время
+	MAX_TIME_SPEED = 100,
 
 	-- Респавн
 	RESPAWN_TIME = 5, -- секунд
 	RESPAWN_INVULNERABILITY = 3, -- секунд неуязвимости после респавна
+
+	-- Спавн точки
+	SPAWN_LOCATIONS = {
+		MAIN = { Position = Vector3.new(0, 5, 0), Name = "Main Spawn" },
+		NORTH = { Position = Vector3.new(0, 5, -50), Name = "North Spawn" },
+		SOUTH = { Position = Vector3.new(0, 5, 50), Name = "South Spawn" },
+		EAST = { Position = Vector3.new(50, 5, 0), Name = "East Spawn" },
+		WEST = { Position = Vector3.new(-50, 5, 0), Name = "West Spawn" },
+	},
+
+	-- Освещение
+	LIGHTING = {
+		DAY = {
+			Brightness = 2,
+			Ambient = Color3.fromRGB(51, 51, 76),
+			ColorShift_Top = Color3.fromRGB(0, 0, 0),
+			ColorShift_Bottom = Color3.fromRGB(0, 0, 0),
+		},
+		NIGHT = {
+			Brightness = 0.5,
+			Ambient = Color3.fromRGB(25, 25, 51),
+			ColorShift_Top = Color3.fromRGB(25, 25, 50),
+			ColorShift_Bottom = Color3.fromRGB(0, 0, 25),
+		},
+		DAWN = {
+			Brightness = 1.2,
+			Ambient = Color3.fromRGB(76, 51, 51),
+			ColorShift_Top = Color3.fromRGB(50, 25, 0),
+			ColorShift_Bottom = Color3.fromRGB(25, 0, 0),
+		},
+		DUSK = {
+			Brightness = 1.0,
+			Ambient = Color3.fromRGB(76, 51, 25),
+			ColorShift_Top = Color3.fromRGB(50, 25, 0),
+			ColorShift_Bottom = Color3.fromRGB(25, 0, 0),
+		},
+	},
+
+	-- Атмосфера
+	ATMOSPHERE = {
+		DAY = {
+			Density = 0.3,
+			Offset = 0.25,
+			Color = Color3.fromRGB(204, 204, 230),
+			Decay = Color3.fromRGB(102, 102, 128),
+			Glare = 0.2,
+			Haze = 1.8,
+		},
+		NIGHT = {
+			Density = 0.5,
+			Offset = 0.1,
+			Color = Color3.fromRGB(102, 102, 153),
+			Decay = Color3.fromRGB(51, 51, 76),
+			Glare = 0.1,
+			Haze = 2.5,
+		},
+	},
+
+	-- Погода (для будущего расширения)
+	WEATHER = {
+		CLEAR = "Clear",
+		CLOUDY = "Cloudy",
+		RAIN = "Rain",
+		STORM = "Storm",
+		FOG = "Fog",
+		SNOW = "Snow",
+	},
+}
+
+-- Настройки производительности
+Constants.PERFORMANCE = {
+	-- Лимиты для больших серверов
+	MAX_PLAYERS_PER_SERVER = 50,
+
+	-- Настройки обновлений
+	PLAYER_UPDATE_RATE = 0.1, -- секунд между обновлениями игрока
+	WORLD_UPDATE_RATE = 1.0, -- секунд между обновлениями мира
+
+	-- Лимиты объектов
+	MAX_SPAWNED_ITEMS = 1000,
+	MAX_ACTIVE_EFFECTS = 500,
 }
 
 return Constants
