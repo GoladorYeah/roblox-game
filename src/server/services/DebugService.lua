@@ -42,20 +42,39 @@ function DebugService:OnInitialize()
 	end)
 
 	-- Регистрируем команды из модулей
+	print("[DEBUG SERVICE] Registering Player commands...")
 	self.PlayerCommands:RegisterCommands()
+
+	print("[DEBUG SERVICE] Registering Experience commands...")
 	self.ExperienceCommands:RegisterCommands()
+
+	print("[DEBUG SERVICE] Registering Validation commands...")
 	self.ValidationCommands:RegisterCommands()
+
+	print("[DEBUG SERVICE] Registering System commands...")
 	self.SystemCommands:RegisterCommands()
+
+	print("[DEBUG SERVICE] Registering World commands...")
 	self.WorldCommands:RegisterCommands()
+
+	print("[DEBUG SERVICE] Registering Character commands...")
 	self.CharacterCommands:RegisterCommands()
 
-	print("[DEBUG SERVICE] All command modules registered (including WorldCommands)")
+	print("[DEBUG SERVICE] All command modules registered successfully!")
+
+	-- Выводим общее количество зарегистрированных команд
+	local commandCount = 0
+	for _ in pairs(self.Commands) do
+		commandCount = commandCount + 1
+	end
+	print("[DEBUG SERVICE] Total commands registered: " .. commandCount)
 end
 
 function DebugService:OnStart()
 	-- Подключаем обработчик чата
 	self:SetupChatHandler()
 	print("[DEBUG SERVICE] Chat handler ready")
+	print("[DEBUG SERVICE] Debug commands available: /help")
 end
 
 -- Настройка обработчика чата
@@ -68,6 +87,7 @@ function DebugService:SetupChatHandler()
 				self:ProcessChatMessage(player, textChatMessage.Text)
 			end
 		end)
+		print("[DEBUG SERVICE] Connected to new TextChatService")
 	else
 		-- Старая система чата
 		self:ConnectEvent(Players.PlayerAdded, function(player)
@@ -86,6 +106,7 @@ function DebugService:SetupChatHandler()
 				end)
 			end
 		end
+		print("[DEBUG SERVICE] Connected to legacy chat system")
 	end
 end
 
@@ -95,6 +116,7 @@ function DebugService:RegisterCommand(commandName, description, callback)
 		Description = description,
 		Callback = callback,
 	}
+	print("[DEBUG SERVICE] Registered command: /" .. commandName .. " - " .. description)
 end
 
 -- Обработка сообщений чата
@@ -130,19 +152,19 @@ function DebugService:ExecuteCommand(player, commandName, args)
 	if not command then
 		self:SendMessage(
 			player,
-			"Команда /"
+			"❌ Команда /"
 				.. commandName
 				.. " не найдена. Используйте /help для списка команд."
 		)
 		return
 	end
 
-	print("[DEBUG] " .. player.Name .. " executed command: /" .. commandName)
+	print("[DEBUG] " .. player.Name .. " executed command: /" .. commandName .. " " .. table.concat(args, " "))
 
 	local success, result = pcall(command.Callback, player, args)
 	if not success then
 		warn("[DEBUG] Error executing command /" .. commandName .. ": " .. tostring(result))
-		self:SendMessage(player, "Ошибка выполнения команды!")
+		self:SendMessage(player, "❌ Ошибка выполнения команды: " .. tostring(result))
 	end
 end
 
@@ -152,7 +174,24 @@ function DebugService:ShowHelp(player)
 
 	-- Группируем команды по категориям
 	local categories = {
-		["Игрок"] = { "stats", "heal", "addgold" },
+		["Игрок"] = { "stats", "heal", "addgold", "setgold", "addattr", "resetattr" },
+		["Персонаж"] = {
+			"damage",
+			"heal",
+			"kill",
+			"respawn",
+			"invul",
+			"regen",
+			"sethealth",
+			"setmana",
+			"setstamina",
+			"charinfo",
+			"speed",
+			"jump",
+			"consumestamina",
+			"teleport",
+			"resetchar",
+		},
 		["Опыт"] = { "addxp", "setexp", "settotalexp", "setlevel", "xpdiag", "fixexp", "xpcalc", "simulate" },
 		["Мир"] = {
 			"time",
@@ -163,11 +202,15 @@ function DebugService:ShowHelp(player)
 			"dusk",
 			"timespeed",
 			"pausetime",
+			"resumetime",
 			"fasttime",
+			"normaltime",
 			"worldinfo",
+			"saveworld",
+			"loadworld",
 		},
-		["Валидация"] = { "valstats", "testval", "resetval" },
-		["Система"] = { "perf", "help" },
+		["Валидация"] = { "valstats", "testval", "resetval", "valtest", "valdebug" },
+		["Система"] = { "perf", "memory", "services", "players", "gc", "benchmark", "network", "uptime", "help" },
 	}
 
 	for categoryName, commandList in pairs(categories) do
@@ -179,6 +222,16 @@ function DebugService:ShowHelp(player)
 			end
 		end
 	end
+
+	-- Показываем общую статистику
+	local totalCommands = 0
+	for _ in pairs(self.Commands) do
+		totalCommands = totalCommands + 1
+	end
+
+	self:SendMessage(player, "--- СТАТИСТИКА ---")
+	self:SendMessage(player, "Всего команд: " .. totalCommands)
+	self:SendMessage(player, "Используйте /<команда> для выполнения")
 end
 
 -- Отправить сообщение игроку
@@ -197,6 +250,74 @@ end
 -- Получить ServiceManager (для модулей)
 function DebugService:GetServiceManager()
 	return require(script.Parent.Parent.ServiceManager)
+end
+
+-- Получить список всех команд (для статистики)
+function DebugService:GetCommandsList()
+	local commandsList = {}
+	for commandName, command in pairs(self.Commands) do
+		table.insert(commandsList, {
+			Name = commandName,
+			Description = command.Description,
+		})
+	end
+
+	-- Сортируем по алфавиту
+	table.sort(commandsList, function(a, b)
+		return a.Name < b.Name
+	end)
+
+	return commandsList
+end
+
+-- Проверка доступности команды
+function DebugService:IsCommandAvailable(commandName)
+	return self.Commands[commandName] ~= nil
+end
+
+-- Получить информацию о команде
+function DebugService:GetCommandInfo(commandName)
+	return self.Commands[commandName]
+end
+
+-- Получить статистику использования команд
+function DebugService:GetCommandStats()
+	return {
+		TotalCommands = self:GetCommandCount(),
+		RegisteredModules = {
+			"PlayerCommands",
+			"ExperienceCommands",
+			"ValidationCommands",
+			"SystemCommands",
+			"WorldCommands",
+			"CharacterCommands",
+		},
+		ChatSystemType = TextChatService.ChatVersion == Enum.ChatVersion.TextChatService and "New" or "Legacy",
+	}
+end
+
+-- Получить количество команд
+function DebugService:GetCommandCount()
+	local count = 0
+	for _ in pairs(self.Commands) do
+		count = count + 1
+	end
+	return count
+end
+
+function DebugService:OnCleanup()
+	-- Очищаем команды
+	self.Commands = {}
+
+	-- Очищаем модули
+	self.PlayerCommands = nil
+	self.ExperienceCommands = nil
+	self.ValidationCommands = nil
+	self.SystemCommands = nil
+	self.WorldCommands = nil
+	self.CharacterCommands = nil
+
+	print("[DEBUG SERVICE] Debug service cleaned up")
 end
 
 return DebugService

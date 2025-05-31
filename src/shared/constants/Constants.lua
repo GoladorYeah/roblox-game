@@ -157,34 +157,6 @@ Constants.NETWORK = {
 	HEARTBEAT_INTERVAL = 30, -- секунд
 }
 
--- События RemoteEvent'ов
-Constants.REMOTE_EVENTS = {
-	-- Данные игрока
-	PLAYER_DATA_LOADED = "PlayerDataLoaded",
-	PLAYER_STATS_CHANGED = "PlayerStatsChanged",
-	LEVEL_UP = "LevelUp",
-	EXPERIENCE_CHANGED = "ExperienceChanged",
-
-	-- Инвентарь
-	INVENTORY_UPDATED = "InventoryUpdated",
-	ITEM_EQUIPPED = "ItemEquipped",
-	ITEM_UNEQUIPPED = "ItemUnequipped",
-
-	-- Бой
-	PLAYER_ATTACKED = "PlayerAttacked",
-	DAMAGE_DEALT = "DamageDealt",
-	HEALTH_CHANGED = "HealthChanged",
-
-	-- Чат
-	CHAT_MESSAGE = "ChatMessage",
-	SYSTEM_MESSAGE = "SystemMessage",
-
-	-- Мир
-	WORLD_TIME_CHANGED = "WorldTimeChanged",
-	DAY_STARTED = "DayStarted",
-	NIGHT_STARTED = "NightStarted",
-}
-
 -- Настройки мира
 Constants.WORLD = {
 	-- Streaming
@@ -300,7 +272,7 @@ Constants.PERFORMANCE = {
 	MAX_ACTIVE_EFFECTS = 500,
 }
 
--- События RemoteEvent'ов
+-- События RemoteEvent'ов (ЕДИНСТВЕННОЕ ОПРЕДЕЛЕНИЕ)
 Constants.REMOTE_EVENTS = {
 	-- Данные игрока
 	PLAYER_DATA_LOADED = "PlayerDataLoaded",
