@@ -28,6 +28,10 @@ function ResourceController.new()
 	-- UI элементы
 	self.ResourceBars = {}
 	self.ResourceTexts = {}
+	self.IsUIReady = false
+
+	-- Очередь обновлений до готовности UI
+	self.PendingUpdates = {}
 
 	-- Настройки анимации
 	self.AnimationDuration = 0.5
@@ -64,13 +68,17 @@ end
 -- Ожидание появления основного HUD
 function ResourceController:WaitForMainHUD()
 	spawn(function()
-		local maxAttempts = 100
+		local maxAttempts = 200 -- Увеличиваем количество попыток
 		local attempts = 0
 
 		while attempts < maxAttempts do
 			local mainHUD = self.PlayerGui:FindFirstChild("MainHUD")
 			if mainHUD then
 				self:CreateResourceBars(mainHUD)
+				self.IsUIReady = true
+
+				-- Обрабатываем все отложенные обновления
+				self:ProcessPendingUpdates()
 				break
 			end
 
@@ -80,12 +88,39 @@ function ResourceController:WaitForMainHUD()
 
 		if attempts >= maxAttempts then
 			warn("[RESOURCE CONTROLLER] MainHUD not found after " .. maxAttempts .. " attempts")
+			-- Пытаемся создать UI принудительно
+			self:CreateResourceBarsForced()
 		end
 	end)
 end
 
+-- Принудительное создание UI если MainHUD не найден
+function ResourceController:CreateResourceBarsForced()
+	print("[RESOURCE CONTROLLER] Creating resource bars in PlayerGui directly")
+
+	-- Создаем собственный ScreenGui
+	local screenGui = Instance.new("ScreenGui")
+	screenGui.Name = "ResourceHUD"
+	screenGui.Parent = self.PlayerGui
+
+	self:CreateResourceBars(screenGui)
+	self.IsUIReady = true
+	self:ProcessPendingUpdates()
+end
+
+-- Обработка отложенных обновлений
+function ResourceController:ProcessPendingUpdates()
+	print("[RESOURCE CONTROLLER] Processing " .. #self.PendingUpdates .. " pending updates")
+
+	for _, updateData in ipairs(self.PendingUpdates) do
+		self:UpdateResourceBar(updateData.resourceType, updateData.newValue, updateData.maxValue)
+	end
+
+	self.PendingUpdates = {}
+end
+
 -- Создание полосок ресурсов
-function ResourceController:CreateResourceBars(mainHUD)
+function ResourceController:CreateResourceBars(parent)
 	-- Создаем основной фрейм для ресурсов
 	local resourceFrame = Instance.new("Frame")
 	resourceFrame.Name = "ResourceFrame"
@@ -94,7 +129,7 @@ function ResourceController:CreateResourceBars(mainHUD)
 	resourceFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 	resourceFrame.BackgroundTransparency = 0.5
 	resourceFrame.BorderSizePixel = 0
-	resourceFrame.Parent = mainHUD
+	resourceFrame.Parent = parent
 
 	-- Добавляем скругленные углы
 	local corner = Instance.new("UICorner")
@@ -184,6 +219,8 @@ function ResourceController:CreateResourceBar(parent, resourceType, icon, color,
 	})
 	gradient.Rotation = 90
 	gradient.Parent = barFill
+
+	print("[RESOURCE CONTROLLER] Created resource bar: " .. resourceType)
 end
 
 -- Подключение событий от сервера
@@ -242,13 +279,26 @@ function ResourceController:OnResourceChanged(data)
 		return
 	end
 
+	-- Если UI еще не готов, добавляем в очередь
+	if not self.IsUIReady then
+		table.insert(self.PendingUpdates, {
+			resourceType = resourceType,
+			newValue = newValue,
+			maxValue = maxValue,
+		})
+		print("[RESOURCE CONTROLLER] Queued resource update: " .. resourceType)
+		return
+	end
+
 	-- Проверяем дебаунс
 	local currentTime = tick()
 	if currentTime - self.LastUpdateTime < self.UpdateCooldown then
 		-- Сохраняем данные для отложенного обновления
 		spawn(function()
 			wait(self.UpdateCooldown)
-			self:UpdateResourceBar(resourceType, newValue, maxValue)
+			if self.IsUIReady then
+				self:UpdateResourceBar(resourceType, newValue, maxValue)
+			end
 		end)
 		return
 	end
@@ -318,7 +368,9 @@ function ResourceController:OnCharacterDied(data)
 	print(string.format("[RESOURCE CONTROLLER] Character died, respawn in %d seconds", data.RespawnTime))
 
 	-- Обновляем здоровье на 0
-	self:UpdateResourceBar("Health", 0, self.Resources.Health.Max)
+	if self.IsUIReady then
+		self:UpdateResourceBar("Health", 0, self.Resources.Health.Max)
+	end
 
 	-- Показываем экран смерти
 	self:ShowDeathScreen(data.RespawnTime)
@@ -332,7 +384,7 @@ function ResourceController:OnCharacterSpawned(data)
 	self:HideDeathScreen()
 
 	-- Обновляем ресурсы
-	if data.Health and data.MaxHealth then
+	if data.Health and data.MaxHealth and self.IsUIReady then
 		self:UpdateResourceBar("Health", data.Health, data.MaxHealth)
 	end
 end
@@ -345,7 +397,22 @@ function ResourceController:UpdateResourceBar(resourceType, newValue, maxValue)
 	local valueText = self.ResourceTexts[resourceType]
 
 	if not barFill or not valueText then
-		warn("[RESOURCE CONTROLLER] Resource bar not found: " .. resourceType)
+		warn(
+			"[RESOURCE CONTROLLER] Resource bar not found: "
+				.. resourceType
+				.. " (UI Ready: "
+				.. tostring(self.IsUIReady)
+				.. ")"
+		)
+
+		-- Если UI не готов, добавляем в очередь
+		if not self.IsUIReady then
+			table.insert(self.PendingUpdates, {
+				resourceType = resourceType,
+				newValue = newValue,
+				maxValue = maxValue,
+			})
+		end
 		return
 	end
 
@@ -512,7 +579,7 @@ end
 
 -- Создание эффекта урона
 function ResourceController:CreateDamageEffect(damage)
-	local screenGui = self.PlayerGui:FindFirstChild("MainHUD")
+	local screenGui = self.PlayerGui:FindFirstChild("MainHUD") or self.PlayerGui:FindFirstChild("ResourceHUD")
 	if not screenGui then
 		return
 	end
@@ -557,7 +624,7 @@ function ResourceController:CreateHealEffect(amount)
 		return
 	end
 
-	local screenGui = self.PlayerGui:FindFirstChild("MainHUD")
+	local screenGui = self.PlayerGui:FindFirstChild("MainHUD") or self.PlayerGui:FindFirstChild("ResourceHUD")
 	if not screenGui then
 		return
 	end
@@ -625,7 +692,7 @@ end
 
 -- Показать эффект неуязвимости
 function ResourceController:ShowInvulnerabilityEffect(duration)
-	local screenGui = self.PlayerGui:FindFirstChild("MainHUD")
+	local screenGui = self.PlayerGui:FindFirstChild("MainHUD") or self.PlayerGui:FindFirstChild("ResourceHUD")
 	if not screenGui then
 		return
 	end
@@ -660,7 +727,7 @@ end
 
 -- Скрыть эффект неуязвимости
 function ResourceController:HideInvulnerabilityEffect()
-	local screenGui = self.PlayerGui:FindFirstChild("MainHUD")
+	local screenGui = self.PlayerGui:FindFirstChild("MainHUD") or self.PlayerGui:FindFirstChild("ResourceHUD")
 	if not screenGui then
 		return
 	end
@@ -673,7 +740,7 @@ end
 
 -- Показать экран смерти
 function ResourceController:ShowDeathScreen(respawnTime)
-	local screenGui = self.PlayerGui:FindFirstChild("MainHUD")
+	local screenGui = self.PlayerGui:FindFirstChild("MainHUD") or self.PlayerGui:FindFirstChild("ResourceHUD")
 	if not screenGui then
 		return
 	end
@@ -730,7 +797,7 @@ end
 
 -- Скрыть экран смерти
 function ResourceController:HideDeathScreen()
-	local screenGui = self.PlayerGui:FindFirstChild("MainHUD")
+	local screenGui = self.PlayerGui:FindFirstChild("MainHUD") or self.PlayerGui:FindFirstChild("ResourceHUD")
 	if not screenGui then
 		return
 	end
@@ -783,9 +850,29 @@ function ResourceController:GetAllResourcesInfo()
 	return info
 end
 
+-- Принудительное обновление UI (для дебага)
+function ResourceController:ForceUpdateUI()
+	if not self.IsUIReady then
+		print("[RESOURCE CONTROLLER] UI not ready for force update")
+		return
+	end
+
+	-- Обновляем все ресурсы текущими значениями
+	for resourceType, resource in pairs(self.Resources) do
+		self:UpdateResourceBar(resourceType, resource.Current, resource.Max)
+	end
+
+	print("[RESOURCE CONTROLLER] Force updated all resource bars")
+end
+
+-- Проверка готовности UI
+function ResourceController:IsUIReady()
+	return self.IsUIReady
+end
+
 function ResourceController:OnCleanup()
 	-- Очищаем все визуальные эффекты
-	local screenGui = self.PlayerGui:FindFirstChild("MainHUD")
+	local screenGui = self.PlayerGui:FindFirstChild("MainHUD") or self.PlayerGui:FindFirstChild("ResourceHUD")
 	if screenGui then
 		local deathScreen = screenGui:FindFirstChild("DeathScreen")
 		if deathScreen then
@@ -802,6 +889,7 @@ function ResourceController:OnCleanup()
 	self.ResourceBars = {}
 	self.ResourceTexts = {}
 	self.Resources = {}
+	self.PendingUpdates = {}
 
 	print("[RESOURCE CONTROLLER] Resource controller cleaned up")
 end
