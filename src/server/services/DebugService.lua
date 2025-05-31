@@ -172,9 +172,9 @@ end
 function DebugService:ShowHelp(player)
 	self:SendMessage(player, "=== ДОСТУПНЫЕ КОМАНДЫ ===")
 
-	-- Группируем команды по категориям
+	-- Группируем команды по категориям (исправленная версия)
 	local categories = {
-		["Игрок"] = { "stats", "heal", "addgold", "setgold", "addattr", "resetattr" },
+		["Игрок"] = { "stats", "addgold", "setgold", "addattr", "resetattr" },
 		["Персонаж"] = {
 			"damage",
 			"heal",
@@ -214,12 +214,46 @@ function DebugService:ShowHelp(player)
 	}
 
 	for categoryName, commandList in pairs(categories) do
-		self:SendMessage(player, "--- " .. categoryName .. " ---")
+		local foundCommands = {}
+
+		-- Проверяем какие команды из списка действительно зарегистрированы
 		for _, commandName in ipairs(commandList) do
-			local command = self.Commands[commandName]
-			if command then
+			if self.Commands[commandName] then
+				table.insert(foundCommands, commandName)
+			end
+		end
+
+		-- Показываем категорию только если есть команды
+		if #foundCommands > 0 then
+			self:SendMessage(player, "--- " .. categoryName .. " ---")
+			for _, commandName in ipairs(foundCommands) do
+				local command = self.Commands[commandName]
 				self:SendMessage(player, "/" .. commandName .. " - " .. command.Description)
 			end
+		end
+	end
+
+	-- Показываем команды, которые не попали ни в одну категорию
+	local categorizedCommands = {}
+	for categoryName, commandList in pairs(categories) do
+		for _, commandName in ipairs(commandList) do
+			categorizedCommands[commandName] = true
+		end
+	end
+
+	local uncategorizedCommands = {}
+	for commandName, _ in pairs(self.Commands) do
+		if not categorizedCommands[commandName] then
+			table.insert(uncategorizedCommands, commandName)
+		end
+	end
+
+	if #uncategorizedCommands > 0 then
+		table.sort(uncategorizedCommands)
+		self:SendMessage(player, "--- ПРОЧИЕ ---")
+		for _, commandName in ipairs(uncategorizedCommands) do
+			local command = self.Commands[commandName]
+			self:SendMessage(player, "/" .. commandName .. " - " .. command.Description)
 		end
 	end
 
@@ -232,6 +266,10 @@ function DebugService:ShowHelp(player)
 	self:SendMessage(player, "--- СТАТИСТИКА ---")
 	self:SendMessage(player, "Всего команд: " .. totalCommands)
 	self:SendMessage(player, "Используйте /<команда> для выполнения")
+
+	-- Отладочная информация
+	self:SendMessage(player, "--- ОТЛАДКА ---")
+	self:SendMessage(player, "Для диагностики используйте: /services")
 end
 
 -- Отправить сообщение игроку
