@@ -1,5 +1,5 @@
 -- src/server/services/PlayerDataService.lua
--- ИСПРАВЛЕННАЯ ВЕРСИЯ - Опыт теперь корректно обрабатывается
+-- Сервис для управления данными игроков с ProfileService
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -85,10 +85,10 @@ function PlayerDataService:LoadPlayerData(player)
 		profile:AddUserId(player.UserId) -- Соответствие GDPR
 		profile:Reconcile() -- Добавляет недостающие поля из DefaultProfile
 
-		-- НОВОЕ: Проверяем и исправляем опыт при загрузке
+		-- Проверяем и исправляем опыт при загрузке
 		self:ValidateAndFixExperience(profile.Data, player.Name)
 
-		-- НОВОЕ: Валидация загруженных данных (ПОСЛЕ исправления опыта)
+		-- Валидация загруженных данных
 		local ServiceManager = require(script.Parent.Parent.ServiceManager)
 		local ValidationService = ServiceManager:GetService("ValidationService")
 
@@ -125,7 +125,6 @@ function PlayerDataService:LoadPlayerData(player)
 			self.LoadedProfiles[player] = true
 
 			print("[PLAYER DATA] Successfully loaded data for " .. player.Name)
-			print("[PLAYER DATA] Profile version: " .. (profile.GlobalUpdates and "New API" or "Legacy API"))
 
 			-- Обновляем последний вход
 			profile.Data.LastLogin = os.time()
@@ -135,6 +134,9 @@ function PlayerDataService:LoadPlayerData(player)
 
 			-- Инициализируем здоровье и ресурсы
 			self:InitializePlayerResources(player)
+
+			-- Уведомляем CharacterService о том, что данные загружены
+			self:NotifyCharacterService(player)
 
 			-- Выводим информацию о данных игрока
 			self:PrintPlayerData(player)
@@ -149,7 +151,7 @@ function PlayerDataService:LoadPlayerData(player)
 	end
 end
 
--- НОВАЯ ФУНКЦИЯ: Проверка и исправление опыта
+-- Проверка и исправление опыта
 function PlayerDataService:ValidateAndFixExperience(data, playerName)
 	-- Рассчитываем какой уровень должен быть при текущем опыте
 	local calculatedLevel = self:CalculateLevelFromCurrentExperience(data.Experience)
@@ -165,14 +167,9 @@ function PlayerDataService:ValidateAndFixExperience(data, playerName)
 			)
 		)
 
-		-- ИСПРАВЛЯЕМ: Конвертируем в правильную систему
-		-- Вариант 1: Сохраняем уровень, корректируем опыт (БЕЗОПАСНЕЕ)
-		data.Experience = 0 -- Сбрасываем к началу текущего уровня
+		-- Сбрасываем к началу текущего уровня (безопаснее)
+		data.Experience = 0
 		warn(string.format("[PLAYER DATA] Reset experience to 0 for level %d", data.Level))
-
-		-- Вариант 2: Если хотим сохранить опыт и пересчитать уровень, раскомментируйте:
-		-- data.Level = calculatedLevel
-		-- warn(string.format("[PLAYER DATA] Corrected level to %d for %d XP", calculatedLevel, data.Experience))
 	end
 
 	-- Проверяем, что опыт не превышает требуемый для следующего уровня
@@ -201,14 +198,12 @@ function PlayerDataService:ValidateAndFixExperience(data, playerName)
 	end
 end
 
--- НОВАЯ ФУНКЦИЯ: Рассчитать уровень из ТЕКУЩЕГО опыта (не общего)
+-- Рассчитать уровень из текущего опыта
 function PlayerDataService:CalculateLevelFromCurrentExperience(currentExperience)
-	-- Если опыт отрицательный или 0, это уровень 1
 	if currentExperience <= 0 then
 		return 1
 	end
 
-	-- Ищем минимальный уровень, для которого требуется больше опыта чем у нас есть
 	local level = 1
 	while level < Constants.PLAYER.MAX_LEVEL do
 		local requiredXP = self:GetRequiredExperience(level)
@@ -227,7 +222,6 @@ function PlayerDataService:SavePlayerData(player)
 	if profile then
 		print("[PLAYER DATA] Saving data for " .. player.Name)
 
-		-- Безопасное сохранение с обработкой ошибок
 		local success, errorMessage = pcall(function()
 			profile:Release()
 		end)
@@ -292,7 +286,7 @@ function PlayerDataService:InitializePlayerResources(player)
 	data.Mana = math.min(data.Mana, maxMana)
 	data.Stamina = math.min(data.Stamina, maxStamina)
 
-	-- ДОБАВЛЯЕМ максимальные значения в данные для синхронизации
+	-- Добавляем максимальные значения в данные для синхронизации
 	data.MaxHealth = maxHealth
 	data.MaxMana = maxMana
 	data.MaxStamina = maxStamina
@@ -307,18 +301,18 @@ function PlayerDataService:InitializePlayerResources(player)
 		MaxStamina = maxStamina,
 	})
 
-	-- ТАКЖЕ отправляем обновленные полные данные
+	-- Отправляем обновленные полные данные
 	self:FireClient(player, Constants.REMOTE_EVENTS.PLAYER_DATA_LOADED, data)
 end
 
--- ИСПРАВЛЕННАЯ ФУНКЦИЯ: Добавить опыт игроку
+-- Добавить опыт игроку
 function PlayerDataService:AddExperience(player, amount)
 	local data = self:GetData(player)
 	if not data then
 		return
 	end
 
-	-- НОВОЕ: Валидация изменения опыта
+	-- Валидация изменения опыта
 	local ServiceManager = require(script.Parent.Parent.ServiceManager)
 	local ValidationService = ServiceManager:GetService("ValidationService")
 
@@ -336,18 +330,18 @@ function PlayerDataService:AddExperience(player, amount)
 		end
 	end
 
-	-- ИСПРАВЛЕНО: Правильно добавляем опыт
+	-- Добавляем опыт
 	data.Experience = data.Experience + amount
 
-	-- ИСПРАВЛЕНО: Проверяем повышение уровня БЕЗ вычитания опыта
+	-- Проверяем повышение уровня
 	local requiredXP = self:GetRequiredExperience(data.Level)
 	local levelsGained = 0
 
 	while data.Experience >= requiredXP and data.Level < Constants.PLAYER.MAX_LEVEL do
-		-- ИСПРАВЛЕНО: Вычитаем только ЗАТРАЧЕННЫЙ опыт
+		-- Вычитаем затраченный опыт
 		data.Experience = data.Experience - requiredXP
 		data.Level = data.Level + 1
-		data.AttributePoints = data.AttributePoints + 5 -- 5 очков за уровень
+		data.AttributePoints = data.AttributePoints + 5
 		levelsGained = levelsGained + 1
 
 		print(
@@ -359,7 +353,7 @@ function PlayerDataService:AddExperience(player, amount)
 			)
 		)
 
-		-- НОВОЕ: Валидация изменения уровня
+		-- Валидация изменения уровня
 		if ValidationService then
 			local levelValidation = ValidationService:ValidateLevelChange(data.Level - 1, data.Level, player.UserId)
 			if not levelValidation.IsValid then
@@ -384,7 +378,7 @@ function PlayerDataService:AddExperience(player, amount)
 			AttributePoints = data.AttributePoints,
 		})
 
-		-- Получаем требуемый опыт для СЛЕДУЮЩЕГО уровня
+		-- Получаем требуемый опыт для следующего уровня
 		requiredXP = self:GetRequiredExperience(data.Level)
 	end
 
@@ -396,6 +390,8 @@ function PlayerDataService:AddExperience(player, amount)
 	})
 
 	if levelsGained > 0 then
+		-- Пересчитываем ресурсы при повышении уровня
+		self:InitializePlayerResources(player)
 		print(string.format("[PLAYER DATA] %s gained %d levels and %d experience", player.Name, levelsGained, amount))
 	else
 		print(
@@ -416,7 +412,7 @@ function PlayerDataService:GetRequiredExperience(level)
 	return math.floor(Constants.EXPERIENCE.BASE_XP_REQUIRED * (level ^ Constants.EXPERIENCE.XP_MULTIPLIER))
 end
 
--- ИСПРАВЛЕННАЯ ФУНКЦИЯ: Получить общий накопленный опыт игрока
+-- Получить общий накопленный опыт игрока
 function PlayerDataService:GetTotalExperience(player)
 	local data = self:GetData(player)
 	if not data then
@@ -424,7 +420,7 @@ function PlayerDataService:GetTotalExperience(player)
 	end
 
 	-- Суммируем весь опыт от предыдущих уровней + текущий остаток
-	local totalExp = data.Experience -- Остаток для текущего уровня
+	local totalExp = data.Experience
 
 	-- Добавляем опыт от всех предыдущих уровней
 	for level = 1, data.Level - 1 do
@@ -434,7 +430,7 @@ function PlayerDataService:GetTotalExperience(player)
 	return totalExp
 end
 
--- Новый метод для валидации транзакций золота:
+-- Добавить золото игроку
 function PlayerDataService:AddGold(player, amount, transactionType)
 	local data = self:GetData(player)
 	if not data then
@@ -483,7 +479,7 @@ function PlayerDataService:AddGold(player, amount, transactionType)
 	return true
 end
 
--- Новый метод для изменения характеристик с валидацией:
+-- Изменить характеристики игрока
 function PlayerDataService:ModifyAttributes(player, attributeChanges)
 	local data = self:GetData(player)
 	if not data then
@@ -497,21 +493,16 @@ function PlayerDataService:ModifyAttributes(player, attributeChanges)
 	end
 
 	-- Валидация новых атрибутов
-	local ServiceManager = require(script.Parent.Parent.ServiceManager)
-	local ValidationService = ServiceManager:GetService("ValidationService")
-
-	if ValidationService then
-		local validationResult = ValidationUtils.ValidatePlayerAttributes(newAttributes)
-		if not validationResult.IsValid then
-			warn(
-				string.format(
-					"[PLAYER DATA] Invalid attribute change for %s: %s",
-					player.Name,
-					validationResult.ErrorMessage
-				)
+	local validationResult = ValidationUtils.ValidatePlayerAttributes(newAttributes)
+	if not validationResult.IsValid then
+		warn(
+			string.format(
+				"[PLAYER DATA] Invalid attribute change for %s: %s",
+				player.Name,
+				validationResult.ErrorMessage
 			)
-			return false
-		end
+		)
+		return false
 	end
 
 	-- Применяем изменения
@@ -538,6 +529,17 @@ function PlayerDataService:ModifyAttributes(player, attributeChanges)
 	return true
 end
 
+-- Уведомление CharacterService о загрузке данных
+function PlayerDataService:NotifyCharacterService(player)
+	local ServiceManager = require(script.Parent.Parent.ServiceManager)
+	local CharacterService = ServiceManager:GetService("CharacterService")
+
+	if CharacterService then
+		-- Обрабатываем очередь настройки персонажа
+		CharacterService:ProcessSetupQueue()
+	end
+end
+
 -- Вывести информацию о данных игрока
 function PlayerDataService:PrintPlayerData(player)
 	local data = self:GetData(player)
@@ -548,9 +550,9 @@ function PlayerDataService:PrintPlayerData(player)
 	print("[PLAYER DATA] === " .. player.Name .. " ===")
 	print("  Level: " .. data.Level)
 	print("  Experience: " .. data.Experience .. "/" .. self:GetRequiredExperience(data.Level))
-	print("  Total Experience: " .. self:GetTotalExperience(player)) -- НОВОЕ: показываем общий опыт
+	print("  Total Experience: " .. self:GetTotalExperience(player))
 	print("  Gold: " .. data.Currency.Gold)
-	print("  Health: " .. data.Health)
+	print("  Health: " .. data.Health .. "/" .. data.MaxHealth)
 	print("  Play Time: " .. math.floor(data.Statistics.TotalPlayTime / 60) .. " minutes")
 	print("  Last Login: " .. os.date("%Y-%m-%d %H:%M:%S", data.LastLogin))
 end

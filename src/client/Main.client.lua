@@ -45,6 +45,13 @@ local function registerControllers()
 		ControllerManager:RegisterController(DataController)
 	end
 
+	-- Регистрируем ResourceController
+	local ResourceController =
+		safeRequire(StarterPlayerScripts.Client.controllers.ResourceController, "ResourceController")
+	if ResourceController then
+		ControllerManager:RegisterController(ResourceController)
+	end
+
 	print("[MAIN] All controllers registered!")
 end
 

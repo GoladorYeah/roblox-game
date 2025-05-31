@@ -45,6 +45,12 @@ local function registerServices()
 		ServiceManager:RegisterService(WorldService)
 	end
 
+	-- Регистрируем CharacterService четвертым (управление персонажами)
+	local CharacterService = safeRequire(ServerScriptService.Server.services.CharacterService, "CharacterService")
+	if CharacterService then
+		ServiceManager:RegisterService(CharacterService)
+	end
+
 	-- Пробуем ProfileService, если не работает - используем SimpleDataService
 	local PlayerDataService = safeRequire(ServerScriptService.Server.services.PlayerDataService, "PlayerDataService")
 	if not PlayerDataService then

@@ -13,6 +13,7 @@ local ExperienceCommands = require(script.Parent.debug.ExperienceCommands)
 local ValidationCommands = require(script.Parent.debug.ValidationCommands)
 local SystemCommands = require(script.Parent.debug.SystemCommands)
 local WorldCommands = require(script.Parent.debug.WorldCommands)
+local CharacterCommands = require(script.Parent.debug.CharacterCommands)
 
 local DebugService = setmetatable({}, { __index = BaseService })
 DebugService.__index = DebugService
@@ -29,6 +30,7 @@ function DebugService.new()
 	self.ValidationCommands = ValidationCommands.new(self)
 	self.SystemCommands = SystemCommands.new(self)
 	self.WorldCommands = WorldCommands.new(self)
+	self.CharacterCommands = CharacterCommands.new(self)
 
 	return self
 end
@@ -45,6 +47,7 @@ function DebugService:OnInitialize()
 	self.ValidationCommands:RegisterCommands()
 	self.SystemCommands:RegisterCommands()
 	self.WorldCommands:RegisterCommands()
+	self.CharacterCommands:RegisterCommands()
 
 	print("[DEBUG SERVICE] All command modules registered (including WorldCommands)")
 end
