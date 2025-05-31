@@ -41,6 +41,15 @@ function DebugService:OnInitialize()
 		self:ShowHelp(player)
 	end)
 
+	self:RegisterCommand("commands", "Показать команды по категориям", function(player, _)
+		self:ShowCategorizedHelp(player)
+	end)
+
+	self:RegisterCommand("search", "Поиск команд: /search [слово]", function(player, args)
+		local keyword = args[1]
+		self:SearchCommands(player, keyword)
+	end)
+
 	-- Регистрируем команды из модулей
 	print("[DEBUG SERVICE] Registering Player commands...")
 	self.PlayerCommands:RegisterCommands()
@@ -74,7 +83,7 @@ function DebugService:OnStart()
 	-- Подключаем обработчик чата
 	self:SetupChatHandler()
 	print("[DEBUG SERVICE] Chat handler ready")
-	print("[DEBUG SERVICE] Debug commands available: /help")
+	print("[DEBUG SERVICE] Debug commands available: /help или /commands")
 end
 
 -- Настройка обработчика чата
@@ -112,6 +121,10 @@ end
 
 -- Регистрация команды
 function DebugService:RegisterCommand(commandName, description, callback)
+	if self.Commands[commandName] then
+		warn("[DEBUG SERVICE] Command /" .. commandName .. " already exists! Overwriting...")
+	end
+
 	self.Commands[commandName] = {
 		Description = description,
 		Callback = callback,
@@ -168,108 +181,146 @@ function DebugService:ExecuteCommand(player, commandName, args)
 	end
 end
 
--- Показать помощь
+-- Показать помощь (все команды списком)
 function DebugService:ShowHelp(player)
-	self:SendMessage(player, "=== ДОСТУПНЫЕ КОМАНДЫ ===")
+	self:SendMessage(player, "=== ВСЕ ДОСТУПНЫЕ КОМАНДЫ ===")
 
-	-- Группируем команды по категориям (исправленная версия)
+	-- Получаем все команды и сортируем по алфавиту
+	local commandsList = {}
+	for commandName, command in pairs(self.Commands) do
+		table.insert(commandsList, {
+			name = commandName,
+			description = command.Description,
+		})
+	end
+
+	table.sort(commandsList, function(a, b)
+		return a.name < b.name
+	end)
+
+	-- Выводим команды по 10 штук для удобства
+	local count = 0
+	for _, cmd in ipairs(commandsList) do
+		self:SendMessage(player, "/" .. cmd.name .. " - " .. cmd.description)
+		count = count + 1
+
+		-- Каждые 15 команд делаем небольшую паузу
+		if count % 15 == 0 then
+			wait(0.1)
+		end
+	end
+
+	self:SendMessage(player, "--- ИТОГО ---")
+	self:SendMessage(player, "Всего команд: " .. #commandsList)
+	self:SendMessage(player, "Используйте /commands для группировки по категориям")
+end
+
+-- Показать помощь по категориям
+function DebugService:ShowCategorizedHelp(player)
+	self:SendMessage(player, "=== КОМАНДЫ ПО КАТЕГОРИЯМ ===")
+
+	-- Определяем категории команд на основе их названий и описаний
 	local categories = {
-		["Игрок"] = { "stats", "addgold", "setgold", "addattr", "resetattr" },
-		["Персонаж"] = {
-			"damage",
-			"heal",
-			"kill",
-			"respawn",
-			"invul",
-			"regen",
-			"sethealth",
-			"setmana",
-			"setstamina",
-			"charinfo",
-			"speed",
-			"jump",
-			"consumestamina",
-			"teleport",
-			"resetchar",
+		["🎮 Основные"] = {
+			commands = { "help", "commands", "search" },
+			description = "Базовые команды помощи и поиска",
 		},
-		["Опыт"] = { "addxp", "setexp", "settotalexp", "setlevel", "xpdiag", "fixexp", "xpcalc", "simulate" },
-		["Мир"] = {
-			"time",
-			"settime",
-			"day",
-			"night",
-			"dawn",
-			"dusk",
-			"timespeed",
-			"pausetime",
-			"resumetime",
-			"fasttime",
-			"normaltime",
-			"worldinfo",
-			"saveworld",
-			"loadworld",
+
+		["👤 Данные игрока"] = {
+			commands = { "stats", "addgold", "setgold", "addattr", "resetattr", "savedata", "reloaddata" },
+			description = "Управление данными и прогрессом игрока",
 		},
-		["Валидация"] = { "valstats", "testval", "resetval", "valtest", "valdebug" },
-		["Система"] = { "perf", "memory", "services", "players", "gc", "benchmark", "network", "uptime", "help" },
+
+		["❤️ Персонаж"] = {
+			commands = {
+				"damage",
+				"heal",
+				"kill",
+				"respawn",
+				"invul",
+				"regen",
+				"sethealth",
+				"setmana",
+				"setstamina",
+				"charinfo",
+				"speed",
+				"jump",
+				"consumestamina",
+				"teleport",
+				"resetchar",
+				"godmode",
+				"ghost",
+			},
+			description = "Управление персонажем и его состоянием",
+		},
+
+		["⭐ Опыт и уровни"] = {
+			commands = { "addxp", "setexp", "settotalexp", "setlevel", "xpdiag", "fixexp", "xpcalc", "simulate" },
+			description = "Система опыта и повышения уровня",
+		},
+
+		["🌍 Мир и время"] = {
+			commands = {
+				"time",
+				"settime",
+				"day",
+				"night",
+				"dawn",
+				"dusk",
+				"timespeed",
+				"pausetime",
+				"resumetime",
+				"fasttime",
+				"normaltime",
+				"worldinfo",
+				"saveworld",
+				"loadworld",
+			},
+			description = "Управление миром и временем",
+		},
+
+		["🔧 Валидация"] = {
+			commands = { "valstats", "testval", "resetval", "valtest", "valdebug" },
+			description = "Система валидации данных",
+		},
+
+		["🖥️ Система"] = {
+			commands = { "perf", "memory", "services", "players", "gc", "benchmark", "network", "uptime" },
+			description = "Мониторинг и производительность",
+		},
 	}
 
-	for categoryName, commandList in pairs(categories) do
-		local foundCommands = {}
+	for categoryName, categoryData in pairs(categories) do
+		self:SendMessage(player, "")
+		self:SendMessage(player, categoryName .. " - " .. categoryData.description)
+		self:SendMessage(player, "─────────────────────")
 
-		-- Проверяем какие команды из списка действительно зарегистрированы
-		for _, commandName in ipairs(commandList) do
-			if self.Commands[commandName] then
-				table.insert(foundCommands, commandName)
-			end
-		end
-
-		-- Показываем категорию только если есть команды
-		if #foundCommands > 0 then
-			self:SendMessage(player, "--- " .. categoryName .. " ---")
-			for _, commandName in ipairs(foundCommands) do
-				local command = self.Commands[commandName]
-				self:SendMessage(player, "/" .. commandName .. " - " .. command.Description)
-			end
-		end
-	end
-
-	-- Показываем команды, которые не попали ни в одну категорию
-	local categorizedCommands = {}
-	for categoryName, commandList in pairs(categories) do
-		for _, commandName in ipairs(commandList) do
-			categorizedCommands[commandName] = true
-		end
-	end
-
-	local uncategorizedCommands = {}
-	for commandName, _ in pairs(self.Commands) do
-		if not categorizedCommands[commandName] then
-			table.insert(uncategorizedCommands, commandName)
-		end
-	end
-
-	if #uncategorizedCommands > 0 then
-		table.sort(uncategorizedCommands)
-		self:SendMessage(player, "--- ПРОЧИЕ ---")
-		for _, commandName in ipairs(uncategorizedCommands) do
+		local foundCommands = 0
+		for _, commandName in ipairs(categoryData.commands) do
 			local command = self.Commands[commandName]
-			self:SendMessage(player, "/" .. commandName .. " - " .. command.Description)
+			if command then
+				self:SendMessage(player, "  /" .. commandName .. " - " .. command.Description)
+				foundCommands = foundCommands + 1
+			end
 		end
+
+		if foundCommands == 0 then
+			self:SendMessage(player, "  (Команды не найдены)")
+		end
+
+		-- Небольшая пауза между категориями
+		wait(0.05)
 	end
 
-	-- Показываем общую статистику
+	self:SendMessage(player, "")
+	self:SendMessage(player, "📝 Используйте /help для полного списка")
+
+	-- Показываем статистику
 	local totalCommands = 0
 	for _ in pairs(self.Commands) do
 		totalCommands = totalCommands + 1
 	end
-
-	self:SendMessage(player, "--- СТАТИСТИКА ---")
-	self:SendMessage(player, "Всего команд: " .. totalCommands)
-	self:SendMessage(player, "Используйте /<команда> для выполнения")
-
-	-- Отладочная информация
-	self:SendMessage(player, "--- ОТЛАДКА ---")
-	self:SendMessage(player, "Для диагностики используйте: /services")
+	self:SendMessage(player, "📊 Всего команд в системе: " .. totalCommands)
 end
 
 -- Отправить сообщение игроку
@@ -341,6 +392,47 @@ function DebugService:GetCommandCount()
 		count = count + 1
 	end
 	return count
+end
+
+-- Поиск команд по ключевому слову
+function DebugService:SearchCommands(player, keyword)
+	if not keyword or keyword == "" then
+		self:SendMessage(
+			player,
+			"❌ Укажите ключевое слово для поиска: /search <слово>"
+		)
+		return
+	end
+
+	keyword = keyword:lower()
+	local foundCommands = {}
+
+	for commandName, command in pairs(self.Commands) do
+		if commandName:lower():find(keyword) or command.Description:lower():find(keyword) then
+			table.insert(foundCommands, {
+				name = commandName,
+				description = command.Description,
+			})
+		end
+	end
+
+	if #foundCommands == 0 then
+		self:SendMessage(
+			player,
+			"❌ Команды с ключевым словом '" .. keyword .. "' не найдены"
+		)
+		return
+	end
+
+	table.sort(foundCommands, function(a, b)
+		return a.name < b.name
+	end)
+
+	self:SendMessage(player, "🔍 Найденные команды для '" .. keyword .. "':")
+	for _, cmd in ipairs(foundCommands) do
+		self:SendMessage(player, "  /" .. cmd.name .. " - " .. cmd.description)
+	end
+	self:SendMessage(player, "Найдено: " .. #foundCommands .. " команд")
 end
 
 function DebugService:OnCleanup()

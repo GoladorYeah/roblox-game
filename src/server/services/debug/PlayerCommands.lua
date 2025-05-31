@@ -1,5 +1,5 @@
 -- src/server/services/debug/PlayerCommands.lua
--- Команды для управления игроком
+-- Команды для управления данными игрока (НЕ персонажем!)
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Constants = require(ReplicatedStorage.Shared.constants.Constants)
@@ -16,12 +16,9 @@ end
 function PlayerCommands:RegisterCommands()
 	local debugService = self.DebugService
 
+	-- ТОЛЬКО команды для ДАННЫХ игрока, не персонажа!
 	debugService:RegisterCommand("stats", "Показать статистику игрока", function(player, _)
 		self:ShowStats(player)
-	end)
-
-	debugService:RegisterCommand("heal", "Восстановить здоровье", function(player, _)
-		self:HealPlayer(player)
 	end)
 
 	debugService:RegisterCommand(
@@ -54,6 +51,22 @@ function PlayerCommands:RegisterCommands()
 	debugService:RegisterCommand("resetattr", "Сбросить атрибуты", function(player, _)
 		self:ResetAttributes(player)
 	end)
+
+	debugService:RegisterCommand(
+		"savedata",
+		"Принудительно сохранить данные",
+		function(player, _)
+			self:SavePlayerData(player)
+		end
+	)
+
+	debugService:RegisterCommand(
+		"reloaddata",
+		"Перезагрузить данные игрока",
+		function(player, _)
+			self:ReloadPlayerData(player)
+		end
+	)
 end
 
 -- Показать статистику игрока
@@ -62,7 +75,7 @@ function PlayerCommands:ShowStats(player)
 	local PlayerDataService = ServiceManager:GetService("PlayerDataService")
 
 	if PlayerDataService == nil or PlayerDataService:IsDataLoaded(player) == false then
-		self.DebugService:SendMessage(player, "Данные игрока не загружены!")
+		self.DebugService:SendMessage(player, "❌ Данные игрока не загружены!")
 		return
 	end
 
@@ -73,90 +86,58 @@ function PlayerCommands:ShowStats(player)
 		local nextLevelXP = PlayerDataService:GetRequiredExperience(data.Level + 1)
 
 		self.DebugService:SendMessage(player, "=== СТАТИСТИКА ИГРОКА ===")
-		self.DebugService:SendMessage(player, "Уровень: " .. data.Level)
+		self.DebugService:SendMessage(player, "👤 Имя: " .. player.Name)
+		self.DebugService:SendMessage(player, "⭐ Уровень: " .. data.Level)
 		self.DebugService:SendMessage(
 			player,
-			string.format("Опыт: %d/%d (%.1f%%)", data.Experience, requiredXP, (data.Experience / requiredXP) * 100)
+			string.format(
+				"📈 Опыт: %d/%d (%.1f%%)",
+				data.Experience,
+				requiredXP,
+				(data.Experience / requiredXP) * 100
+			)
 		)
-		self.DebugService:SendMessage(player, "Общий опыт: " .. totalXP)
-		self.DebugService:SendMessage(player, "Для следующего уровня: " .. nextLevelXP)
-		self.DebugService:SendMessage(player, "Золото: " .. data.Currency.Gold)
+		self.DebugService:SendMessage(player, "🎯 Общий опыт: " .. totalXP)
+		self.DebugService:SendMessage(player, "📊 Для следующего уровня: " .. nextLevelXP)
+		self.DebugService:SendMessage(player, "💰 Золото: " .. data.Currency.Gold)
+		self.DebugService:SendMessage(player, "🎲 Очки атрибутов: " .. data.AttributePoints)
 		self.DebugService:SendMessage(
 			player,
-			string.format("Здоровье: %d/%d", data.Health, data.MaxHealth or 100)
+			"⏱️ Время игры: " .. math.floor(data.Statistics.TotalPlayTime / 60) .. " мин"
 		)
-		self.DebugService:SendMessage(player, string.format("Мана: %d/%d", data.Mana, data.MaxMana or 50))
+
+		-- Показываем максимальные ресурсы (расчетные)
+		self.DebugService:SendMessage(player, "--- МАКСИМАЛЬНЫЕ РЕСУРСЫ ---")
 		self.DebugService:SendMessage(
 			player,
-			string.format("Стамина: %d/%d", data.Stamina, data.MaxStamina or 100)
+			string.format("❤️ Макс. здоровье: %d", data.MaxHealth or 100)
 		)
+		self.DebugService:SendMessage(player, string.format("💙 Макс. мана: %d", data.MaxMana or 50))
 		self.DebugService:SendMessage(
 			player,
-			"Время игры: " .. math.floor(data.Statistics.TotalPlayTime / 60) .. " мин"
+			string.format("💛 Макс. стамина: %d", data.MaxStamina or 100)
 		)
-		self.DebugService:SendMessage(player, "Очки атрибутов: " .. data.AttributePoints)
 
 		-- Показываем атрибуты
 		self.DebugService:SendMessage(player, "--- АТРИБУТЫ ---")
 		for attrName, attrValue in pairs(data.Attributes) do
-			self.DebugService:SendMessage(player, string.format("%s: %d", attrName, attrValue))
+			self.DebugService:SendMessage(player, string.format("🔸 %s: %d", attrName, attrValue))
 		end
 
-		-- Показываем статистику
-		self.DebugService:SendMessage(player, "--- СТАТИСТИКА ---")
-		self.DebugService:SendMessage(player, "Убито мобов: " .. data.Statistics.MobsKilled)
-		self.DebugService:SendMessage(player, "Завершено квестов: " .. data.Statistics.QuestsCompleted)
-		self.DebugService:SendMessage(player, "Создано предметов: " .. data.Statistics.ItemsCrafted)
-		self.DebugService:SendMessage(player, "Смертей: " .. data.Statistics.Deaths)
-	end
-end
-
--- Восстановить здоровье игрока
-function PlayerCommands:HealPlayer(player)
-	local ServiceManager = self.DebugService:GetServiceManager()
-	local PlayerDataService = ServiceManager:GetService("PlayerDataService")
-
-	if PlayerDataService == nil or PlayerDataService:IsDataLoaded(player) == false then
-		self.DebugService:SendMessage(player, "Данные игрока не загружены!")
-		return
-	end
-
-	local data = PlayerDataService:GetData(player)
-	if data ~= nil then
-		-- Рассчитываем максимальные значения
-		local maxHealth = Constants.PLAYER.BASE_HEALTH
-			+ (data.Attributes.Constitution * Constants.PLAYER.HEALTH_PER_CONSTITUTION)
-		local maxMana = Constants.PLAYER.BASE_MANA
-			+ (data.Attributes.Intelligence * Constants.PLAYER.MANA_PER_INTELLIGENCE)
-		local maxStamina = Constants.PLAYER.BASE_STAMINA
-			+ (data.Attributes.Constitution * Constants.PLAYER.STAMINA_PER_CONSTITUTION)
-
-		-- Восстанавливаем ресурсы
-		data.Health = maxHealth
-		data.Mana = maxMana
-		data.Stamina = maxStamina
-
-		-- Обновляем максимальные значения
-		data.MaxHealth = maxHealth
-		data.MaxMana = maxMana
-		data.MaxStamina = maxStamina
-
-		-- Отправляем обновления
-		PlayerDataService:InitializePlayerResources(player)
-
+		-- Показываем игровую статистику
+		self.DebugService:SendMessage(player, "--- ИГРОВАЯ СТАТИСТИКА ---")
+		self.DebugService:SendMessage(player, "⚔️ Убито мобов: " .. data.Statistics.MobsKilled)
 		self.DebugService:SendMessage(
 			player,
-			string.format(
-				"✅ Полностью восстановлен! HP: %d, MP: %d, SP: %d",
-				maxHealth,
-				maxMana,
-				maxStamina
-			)
+			"📜 Завершено квестов: " .. data.Statistics.QuestsCompleted
 		)
-
-		print(
-			string.format("[DEBUG] %s fully healed: HP=%d, MP=%d, SP=%d", player.Name, maxHealth, maxMana, maxStamina)
+		self.DebugService:SendMessage(
+			player,
+			"🔨 Создано предметов: " .. data.Statistics.ItemsCrafted
 		)
+		self.DebugService:SendMessage(player, "💀 Смертей: " .. data.Statistics.Deaths)
+		self.DebugService:SendMessage(player, "⚔️ Нанесено урона: " .. data.Statistics.DamageDealt)
+		self.DebugService:SendMessage(player, "🛡️ Получено урона: " .. data.Statistics.DamageTaken)
 	end
 end
 
@@ -166,7 +147,7 @@ function PlayerCommands:AddGold(player, amount)
 	local PlayerDataService = ServiceManager:GetService("PlayerDataService")
 
 	if PlayerDataService == nil or PlayerDataService:IsDataLoaded(player) == false then
-		self.DebugService:SendMessage(player, "Данные игрока не загружены!")
+		self.DebugService:SendMessage(player, "❌ Данные игрока не загружены!")
 		return
 	end
 
@@ -184,7 +165,7 @@ function PlayerCommands:SetGold(player, amount)
 	local PlayerDataService = ServiceManager:GetService("PlayerDataService")
 
 	if PlayerDataService == nil or PlayerDataService:IsDataLoaded(player) == false then
-		self.DebugService:SendMessage(player, "Данные игрока не загружены!")
+		self.DebugService:SendMessage(player, "❌ Данные игрока не загружены!")
 		return
 	end
 
@@ -212,7 +193,7 @@ function PlayerCommands:AddAttributePoints(player, amount)
 	local PlayerDataService = ServiceManager:GetService("PlayerDataService")
 
 	if PlayerDataService == nil or PlayerDataService:IsDataLoaded(player) == false then
-		self.DebugService:SendMessage(player, "Данные игрока не загружены!")
+		self.DebugService:SendMessage(player, "❌ Данные игрока не загружены!")
 		return
 	end
 
@@ -252,7 +233,7 @@ function PlayerCommands:ResetAttributes(player)
 	local PlayerDataService = ServiceManager:GetService("PlayerDataService")
 
 	if PlayerDataService == nil or PlayerDataService:IsDataLoaded(player) == false then
-		self.DebugService:SendMessage(player, "Данные игрока не загружены!")
+		self.DebugService:SendMessage(player, "❌ Данные игрока не загружены!")
 		return
 	end
 
@@ -285,7 +266,7 @@ function PlayerCommands:ResetAttributes(player)
 		)
 		self.DebugService:SendMessage(
 			player,
-			string.format("Очки атрибутов восстановлены: %d", data.AttributePoints)
+			string.format("🎲 Очки атрибутов восстановлены: %d", data.AttributePoints)
 		)
 
 		-- Показываем изменения
@@ -305,6 +286,58 @@ function PlayerCommands:ResetAttributes(player)
 			)
 		)
 	end
+end
+
+-- Принудительно сохранить данные игрока
+function PlayerCommands:SavePlayerData(player)
+	local ServiceManager = self.DebugService:GetServiceManager()
+	local PlayerDataService = ServiceManager:GetService("PlayerDataService")
+
+	if PlayerDataService == nil then
+		self.DebugService:SendMessage(player, "❌ PlayerDataService недоступен!")
+		return
+	end
+
+	if not PlayerDataService:IsDataLoaded(player) then
+		self.DebugService:SendMessage(player, "❌ Данные игрока не загружены!")
+		return
+	end
+
+	-- ProfileService автоматически сохраняет данные
+	-- Но мы можем принудительно сохранить через SaveAllPlayerData
+	PlayerDataService:SaveAllPlayerData()
+
+	self.DebugService:SendMessage(player, "💾 Данные сохранены!")
+	print(string.format("[DEBUG] Forced save for %s", player.Name))
+end
+
+-- Перезагрузить данные игрока (опасная операция!)
+function PlayerCommands:ReloadPlayerData(player)
+	local ServiceManager = self.DebugService:GetServiceManager()
+	local PlayerDataService = ServiceManager:GetService("PlayerDataService")
+
+	if PlayerDataService == nil then
+		self.DebugService:SendMessage(player, "❌ PlayerDataService недоступен!")
+		return
+	end
+
+	self.DebugService:SendMessage(player, "⚠️ Перезагрузка данных...")
+	self.DebugService:SendMessage(
+		player,
+		"⚠️ ВНИМАНИЕ: Несохраненные изменения будут потеряны!"
+	)
+
+	-- Сначала сохраняем текущие данные
+	PlayerDataService:SavePlayerData(player)
+
+	-- Ждем немного
+	wait(1)
+
+	-- Загружаем заново
+	PlayerDataService:LoadPlayerData(player)
+
+	self.DebugService:SendMessage(player, "🔄 Данные перезагружены!")
+	print(string.format("[DEBUG] Data reloaded for %s", player.Name))
 end
 
 return PlayerCommands

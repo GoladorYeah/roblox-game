@@ -1,5 +1,5 @@
 -- src/server/services/debug/CharacterCommands.lua
--- Команды для управления персонажем и ресурсами
+-- Команды для управления персонажем и ресурсами (НЕ данными игрока!)
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Constants = require(ReplicatedStorage.Shared.constants.Constants)
@@ -16,6 +16,7 @@ end
 function CharacterCommands:RegisterCommands()
 	local debugService = self.DebugService
 
+	-- ТОЛЬКО команды для ПЕРСОНАЖА, не данных игрока!
 	debugService:RegisterCommand(
 		"damage",
 		"Нанести урон: /damage [количество]",
@@ -142,6 +143,16 @@ function CharacterCommands:RegisterCommands()
 
 	debugService:RegisterCommand("resetchar", "Сброс персонажа", function(player, _)
 		self:ResetCharacter(player)
+	end)
+
+	debugService:RegisterCommand("godmode", "Режим бога: /godmode [on/off]", function(player, args)
+		local mode = args[1] or "toggle"
+		self:ToggleGodMode(player, mode)
+	end)
+
+	debugService:RegisterCommand("ghost", "Режим призрака: /ghost [on/off]", function(player, args)
+		local mode = args[1] or "toggle"
+		self:ToggleGhostMode(player, mode)
 	end)
 end
 
@@ -377,8 +388,8 @@ function CharacterCommands:ShowCharacterInfo(player)
 	self.DebugService:SendMessage(player, "=== ИНФОРМАЦИЯ О ПЕРСОНАЖЕ ===")
 
 	-- Основная информация
-	self.DebugService:SendMessage(player, string.format("Имя: %s", player.Name))
-	self.DebugService:SendMessage(player, string.format("Уровень: %d", data.Level))
+	self.DebugService:SendMessage(player, string.format("👤 Имя: %s", player.Name))
+	self.DebugService:SendMessage(player, string.format("⭐ Уровень: %d", data.Level))
 
 	-- Ресурсы
 	self.DebugService:SendMessage(player, "--- РЕСУРСЫ ---")
@@ -427,9 +438,9 @@ function CharacterCommands:ShowCharacterInfo(player)
 			self.DebugService:SendMessage(player, "--- ХАРАКТЕРИСТИКИ ---")
 			self.DebugService:SendMessage(
 				player,
-				string.format("Скорость ходьбы: %.1f", humanoid.WalkSpeed)
+				string.format("🏃 Скорость ходьбы: %.1f", humanoid.WalkSpeed)
 			)
-			self.DebugService:SendMessage(player, string.format("Сила прыжка: %.1f", humanoid.JumpPower))
+			self.DebugService:SendMessage(player, string.format("🦘 Сила прыжка: %.1f", humanoid.JumpPower))
 		end
 
 		local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
@@ -437,21 +448,22 @@ function CharacterCommands:ShowCharacterInfo(player)
 			local pos = humanoidRootPart.Position
 			self.DebugService:SendMessage(
 				player,
-				string.format("Позиция: %.1f, %.1f, %.1f", pos.X, pos.Y, pos.Z)
+				string.format("📍 Позиция: %.1f, %.1f, %.1f", pos.X, pos.Y, pos.Z)
 			)
 		end
 	end
 
 	-- Статистика смертей
 	self.DebugService:SendMessage(player, "--- СТАТИСТИКА ---")
-	self.DebugService:SendMessage(player, string.format("Смертей: %d", data.Statistics.Deaths))
+	self.DebugService:SendMessage(player, string.format("💀 Смертей: %d", data.Statistics.Deaths))
 
 	-- Быстрые команды
-	self.DebugService:SendMessage(player, "--- КОМАНДЫ ---")
+	self.DebugService:SendMessage(player, "--- КОМАНДЫ ПЕРСОНАЖА ---")
 	self.DebugService:SendMessage(player, "/damage 50 - нанести урон")
 	self.DebugService:SendMessage(player, "/heal 100 - лечение")
 	self.DebugService:SendMessage(player, "/regen - полное восстановление")
 	self.DebugService:SendMessage(player, "/kill - убить персонажа")
+	self.DebugService:SendMessage(player, "/speed 30 - изменить скорость")
 end
 
 -- Установить скорость ходьбы
@@ -583,6 +595,64 @@ function CharacterCommands:ResetCharacter(player)
 	-- Принудительно перезагружаем персонажа
 	player:LoadCharacter()
 	self.DebugService:SendMessage(player, "🔄 Персонаж сброшен и перезагружен!")
+end
+
+-- Режим бога
+function CharacterCommands:ToggleGodMode(player, mode)
+	-- Простая реализация через неуязвимость
+	local ServiceManager = self.DebugService:GetServiceManager()
+	local CharacterService = ServiceManager:GetService("CharacterService")
+
+	if not CharacterService then
+		self.DebugService:SendMessage(player, "❌ CharacterService недоступен!")
+		return
+	end
+
+	if mode == "on" or (mode == "toggle" and not CharacterService:IsPlayerInvulnerable(player)) then
+		CharacterService:SetPlayerInvulnerable(player, 999999) -- Очень долго
+		CharacterService:RestorePlayerResources(player)
+		self.DebugService:SendMessage(player, "👑 Режим бога ВКЛЮЧЕН")
+	else
+		-- Снимаем неуязвимость (пока нет прямого метода, устанавливаем на 0.1 сек)
+		CharacterService.InvulnerableList[player] = tick() + 0.1
+		self.DebugService:SendMessage(player, "👑 Режим бога ВЫКЛЮЧЕН")
+	end
+end
+
+-- Режим призрака
+function CharacterCommands:ToggleGhostMode(player, mode)
+	local ServiceManager = self.DebugService:GetServiceManager()
+	local CharacterService = ServiceManager:GetService("CharacterService")
+
+	if not CharacterService then
+		self.DebugService:SendMessage(player, "❌ CharacterService недоступен!")
+		return
+	end
+
+	local character = CharacterService:GetPlayerCharacter(player)
+	if not character then
+		self.DebugService:SendMessage(player, "❌ Персонаж не найден!")
+		return
+	end
+
+	-- Простая реализация через CanCollide
+	for _, part in pairs(character:GetChildren()) do
+		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+			if mode == "on" or (mode == "toggle" and part.CanCollide) then
+				part.CanCollide = false
+				part.Transparency = 0.5
+			else
+				part.CanCollide = true
+				part.Transparency = 0
+			end
+		end
+	end
+
+	local isGhost = not character:FindFirstChild("Head").CanCollide
+	self.DebugService:SendMessage(
+		player,
+		"👻 Режим призрака " .. (isGhost and "ВКЛЮЧЕН" or "ВЫКЛЮЧЕН")
+	)
 end
 
 return CharacterCommands

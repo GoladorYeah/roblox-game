@@ -52,6 +52,12 @@ local function registerControllers()
 		ControllerManager:RegisterController(ResourceController)
 	end
 
+	-- Регистрируем ResourceController
+	local CameraController = safeRequire(StarterPlayerScripts.Client.controllers.CameraController, "CameraController")
+	if CameraController then
+		ControllerManager:RegisterController(CameraController)
+	end
+
 	print("[MAIN] All controllers registered!")
 end
 
